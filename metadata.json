@@ -1,0 +1,9 @@
+{
+  "name": "Hud-Hud backup 20",
+  "description": "A modern, scalable real-time chat application inspired by Telegram Web.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
