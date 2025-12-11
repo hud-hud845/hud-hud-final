@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { 
   X, User, Users, Settings, 
-  CircleHelp, MessageSquare, LogOut, AlertTriangle, Radio, BadgeCheck
+  HelpCircle, MessageSquare, LogOut, AlertTriangle, Radio, BadgeCheck
 } from 'lucide-react';
 import { User as UserType, ViewState } from '../types';
 import { useAuth } from '../context/AuthContext';
@@ -36,7 +36,7 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
     { id: 'groups', icon: Users, label: t.nav.groups },
     { id: 'contacts', icon: User, label: t.nav.contacts },
     { id: 'settings', icon: Settings, label: t.nav.settings },
-    { id: 'help', icon: CircleHelp, label: t.nav.help },
+    { id: 'help', icon: HelpCircle, label: t.nav.help },
   ];
 
   // Jika admin, tambahkan menu Broadcast
