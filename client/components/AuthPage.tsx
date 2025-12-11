@@ -27,6 +27,23 @@ export const AuthPage: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Helper untuk cek kekuatan password
+  const checkPasswordStrength = (pass: string) => {
+    const hasUpper = /[A-Z]/.test(pass);
+    const hasNumber = /[0-9]/.test(pass);
+    const hasSymbol = /[!@#$%^&*(),.?":{}|<>]/.test(pass);
+    const isLengthValid = pass.length >= 6;
+
+    return {
+      isValid: hasUpper && hasNumber && hasSymbol && isLengthValid,
+      hasUpper,
+      hasNumber,
+      hasSymbol
+    };
+  };
+
+  const passwordStrength = checkPasswordStrength(password);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -53,6 +70,11 @@ export const AuthPage: React.FC = () => {
         }
         if (password.length < 6) {
           throw new Error("Password minimal 6 karakter.");
+        }
+        
+        // Validasi Kompleksitas Password
+        if (!passwordStrength.isValid) {
+           throw new Error("Password wajib mengandung Huruf Kapital, Angka, dan Simbol.");
         }
 
         await registerUser({
@@ -190,7 +212,7 @@ export const AuthPage: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg bg-cream-50 border border-cream-200 text-denim-900 focus:outline-none focus:ring-1 focus:ring-denim-500 transition-all placeholder-denim-300 pr-10 text-sm"
+                  className={`w-full px-3 py-2.5 rounded-lg bg-cream-50 border text-denim-900 focus:outline-none focus:ring-1 transition-all placeholder-denim-300 pr-10 text-sm ${!isLogin && password && !passwordStrength.isValid ? 'border-red-300 focus:ring-red-400' : 'border-cream-200 focus:ring-denim-500'}`}
                   placeholder="••••••"
                   minLength={6}
                 />
@@ -202,6 +224,21 @@ export const AuthPage: React.FC = () => {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
+              
+              {/* INDIKATOR KEKUATAN PASSWORD */}
+              {!isLogin && (
+                <div className="mt-1 ml-1 animate-in fade-in duration-300">
+                  {passwordStrength.isValid ? (
+                     <p className="text-xs font-bold text-blue-600 flex items-center gap-1">
+                       Password Kuat
+                     </p>
+                  ) : (
+                     <p className="text-[10px] text-gray-500 leading-tight">
+                       * Wajib kombinasi Huruf Kapital, Angka, & Simbol.
+                     </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {!isLogin && (
@@ -253,6 +290,8 @@ export const AuthPage: React.FC = () => {
                 setError('');
                 setAvatarPreview(null);
                 setAvatarFile(null);
+                setPassword('');
+                setConfirmPassword('');
               }}
               className="font-bold text-denim-800 hover:underline focus:outline-none ml-1"
             >

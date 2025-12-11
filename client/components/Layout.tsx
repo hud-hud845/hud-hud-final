@@ -53,6 +53,27 @@ export const Layout: React.FC = () => {
   // Global Admin Profile State (Full Object, not just UID)
   const [adminProfile, setAdminProfile] = useState<User | null>(null);
 
+  // LOGIKA NAVIGASI BACK BUTTON (MOBILE)
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      // Mencegah browser keluar aplikasi.
+      // Kita cek state React saat ini untuk menentukan aksi "Mundur".
+      
+      if (selectedChat) {
+        // Jika sedang membuka chat, tutup chat (kembali ke list)
+        setSelectedChat(undefined);
+      } else if (currentView !== 'chats') {
+        // Jika sedang membuka menu lain (settings, kontak), kembali ke 'chats'
+        setCurrentView('chats');
+      } 
+      // Jika di halaman utama ('chats' dan tidak ada chat terpilih), 
+      // biarkan default browser (keluar aplikasi/tab sebelumnya)
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [selectedChat, currentView]);
+
   // Save settings when changed
   useEffect(() => {
     localStorage.setItem('hudhud_settings', JSON.stringify(appSettings));
@@ -136,12 +157,23 @@ export const Layout: React.FC = () => {
   if (!currentUser) return null;
 
   const handleMenuNavigation = (view: ViewState) => {
+    // Push history state agar tombol back bisa menutup menu ini nanti
+    if (view !== 'chats') {
+       window.history.pushState({ view: view }, '', '');
+    }
     setCurrentView(view);
   };
 
   const handleBackToChats = () => {
-    setSelectedChat(undefined);
-    setCurrentView('chats');
+    // Jika user klik tombol back di UI (panah kiri), 
+    // kita bisa pakai history.back() agar stack history bersih
+    if (window.history.state) {
+      window.history.back();
+    } else {
+      // Fallback manual jika user langsung refresh di halaman ini
+      setSelectedChat(undefined);
+      setCurrentView('chats');
+    }
   };
 
   // Logika: Tandai pesan sudah dibaca
@@ -161,6 +193,8 @@ export const Layout: React.FC = () => {
   };
 
   const handleSelectChat = (chat: ChatPreview) => {
+    // Push history state agar tombol back HP bisa menutup chat
+    window.history.pushState({ chat: chat.id }, '', '');
     setSelectedChat(chat);
     markChatAsRead(chat);
   };
@@ -295,7 +329,7 @@ export const Layout: React.FC = () => {
           <ChatWindow 
             chat={selectedChat}
             currentUser={currentUser}
-            onBack={() => setSelectedChat(undefined)}
+            onBack={handleBackToChats} // Use handleBackToChats to support history
             contactsMap={contactsMap}
             getDisplayName={getDisplayName}
             onStartChat={handleStartChat}
