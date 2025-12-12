@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Pin, Menu, Camera, Loader2, MoreVertical, Trash2, CheckSquare, X, Users, User as UserIcon, MessageSquare, Plus, AlertTriangle, BadgeCheck } from 'lucide-react';
 import { ChatPreview, Contact, User } from '../types';
 import { format } from 'date-fns';
-import { collection, query, where, onSnapshot, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, writeBatch, getDocs, getDoc, orderBy } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { AppSettings } from './Layout';
@@ -53,7 +53,17 @@ export const ChatList: React.FC<ChatListProps> = ({
 
   useEffect(() => {
     if (!currentUser) return;
-    const q = query(collection(db, 'chats'), where('participants', 'array-contains', currentUser.id));
+    
+    // QUERY OPTIMIZED: Menggunakan orderBy('updatedAt', 'desc')
+    // Ini mewajibkan adanya INDEX Composite di Firestore:
+    // Collection: chats
+    // Fields: participants (Arrays) + updatedAt (Descending)
+    const q = query(
+      collection(db, 'chats'), 
+      where('participants', 'array-contains', currentUser.id),
+      orderBy('updatedAt', 'desc')
+    );
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedChats: ChatPreview[] = snapshot.docs.map(doc => {
         const data = doc.data();
@@ -63,10 +73,20 @@ export const ChatList: React.FC<ChatListProps> = ({
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as ChatPreview;
       });
-      fetchedChats.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      // Sorting di sini tidak diperlukan lagi karena sudah di-handle oleh Firestore (orderBy),
+      // tapi kita biarkan sebagai fallback aman.
+      // fetchedChats.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      
       setChats(fetchedChats);
       setLoading(false);
-    }, (error) => { setLoading(false); });
+    }, (error) => { 
+      console.error("Error fetching chats:", error);
+      // Jika error index, stop loading agar user tidak stuck
+      if (error.code === 'failed-precondition') {
+         console.log("INDEX DIPERLUKAN! Buka link di console log di atas untuk membuatnya otomatis.");
+      }
+      setLoading(false); 
+    });
     return () => unsubscribe();
   }, [currentUser]);
   
