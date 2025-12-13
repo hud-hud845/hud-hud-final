@@ -4,68 +4,57 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- FUNGSI BANTUAN ---
+    // --- FUNGSI BANTUAN (HELPER) ---
     
     // Cek apakah user sudah login
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Cek apakah user mengakses datanya sendiri
+    // Cek apakah user yang mengakses adalah pemilik data (berdasarkan UID)
     function isOwner(userId) {
       return request.auth.uid == userId;
-    }
-    
-    // Cek apakah data yang masuk valid (mencegah spam/data korup)
-    function isValidUser() {
-      return request.resource.data.name is string &&
-             request.resource.data.name.size() > 0;
     }
 
     // --- ATURAN KOLEKSI ---
 
-    // 1. Users Collection
+    // 1. KOLEKSI USERS
     match /users/{userId} {
-      // Siapapun yang login bisa membaca profil user lain (untuk cari kontak)
+      // IZINKAN BACA (READ): 
+      // Wajib diizinkan untuk semua user yang sudah login (isSignedIn).
+      // Alasannya:
+      // a. Saat Register: Aplikasi perlu mengecek seluruh user untuk memastikan Nomor HP unik.
+      // b. Saat Chat: Aplikasi perlu mengambil foto & nama lawan bicara.
       allow read: if isSignedIn();
       
-      // Hanya pemilik akun yang bisa membuat/mengedit data dirinya
-      allow create: if isSignedIn() && isOwner(userId);
-      allow update: if isSignedIn() && (isOwner(userId) || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'lastSeen'])); 
+      // IZINKAN TULIS (CREATE/UPDATE):
+      // Hanya pemilik akun (isOwner) yang boleh membuat atau mengubah datanya sendiri.
+      // Ini mencegah orang lain mengedit profil Anda.
+      allow create, update: if isSignedIn() && isOwner(userId);
       
-      // Admin global (hardcoded UID check atau field check)
-      // Di sini kita izinkan update jika user adalah admin (berdasarkan klaim di token atau field isAdmin di database)
-      // Namun untuk keamanan maksimal, validasi admin sebaiknya via Cloud Functions.
-      // Untuk front-end direct, kita izinkan write profile sendiri saja.
-      
-      // Sub-koleksi Contacts (Hanya pemilik yang bisa baca kontaknya sendiri)
+      // Sub-koleksi Contacts (Daftar Kontak User)
       match /contacts/{contactId} {
+        // Hanya pemilik akun yang boleh melihat dan mengedit kontaknya sendiri.
         allow read, write: if isSignedIn() && isOwner(userId);
       }
     }
 
-    // 2. Chats Collection
+    // 2. KOLEKSI CHATS
     match /chats/{chatId} {
-      // Create: User harus login & UID-nya harus ada di array participants
-      allow create: if isSignedIn() && 
-                    request.resource.data.participants.hasAny([request.auth.uid]);
-
-      // Read & Update: Hanya boleh jika UID user ada di daftar participants
-      allow read: if isSignedIn() && (request.auth.uid in resource.data.participants);
-      allow update: if isSignedIn() && (request.auth.uid in resource.data.participants);
+      // Membuat Chat: Diizinkan jika UID pembuat ada di dalam daftar 'participants'
+      allow create: if isSignedIn() && request.resource.data.participants.hasAny([request.auth.uid]);
       
-      // Delete: Hanya boleh delete jika adminIds ada (Grup) dan user adalah admin, 
-      // ATAU logic hapus chat personal (biasanya di-flag, bukan dihapus dokumennya, tapi kita izinkan delete untuk sekarang)
-      allow delete: if isSignedIn() && (request.auth.uid in resource.data.participants);
+      // Baca/Edit/Hapus Chat: Hanya diizinkan jika user adalah salah satu peserta chat tersebut
+      allow read, update, delete: if isSignedIn() && (request.auth.uid in resource.data.participants);
 
-      // 3. Messages Sub-collection
+      // Sub-koleksi Messages (Pesan di dalam Chat)
       match /messages/{messageId} {
-        // Hanya boleh baca/tulis pesan jika user adalah peserta di Chat induknya
-        // Menggunakan get() untuk mengambil data chat parent
-        allow read, create: if isSignedIn() && 
-                            request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        // Baca & Kirim Pesan:
+        // Diizinkan jika user terdaftar sebagai peserta di dokumen induk (Chat)
+        allow read, create: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
         
-        // Pesan bisa dihapus oleh pengirimnya sendiri
+        // Hapus Pesan:
+        // Hanya pengirim pesan (senderId) yang boleh menghapus pesannya sendiri
         allow delete: if isSignedIn() && (request.auth.uid == resource.data.senderId);
       }
     }
