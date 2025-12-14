@@ -48,16 +48,13 @@ export const ChatList: React.FC<ChatListProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // Cache for unknown user phones
-  const [unknownUserPhones, setUnknownUserPhones] = useState<Record<string, string>>({});
+  // Cache for unknown users (fetching full User object now, not just phone)
+  const [unknownUsersCache, setUnknownUsersCache] = useState<Record<string, User>>({});
 
   useEffect(() => {
     if (!currentUser) return;
     
     // QUERY OPTIMIZED: Menggunakan orderBy('updatedAt', 'desc')
-    // Ini mewajibkan adanya INDEX Composite di Firestore:
-    // Collection: chats
-    // Fields: participants (Arrays) + updatedAt (Descending)
     const q = query(
       collection(db, 'chats'), 
       where('participants', 'array-contains', currentUser.id),
@@ -73,15 +70,11 @@ export const ChatList: React.FC<ChatListProps> = ({
           updatedAt: data.updatedAt?.toDate() || new Date(),
         } as ChatPreview;
       });
-      // Sorting di sini tidak diperlukan lagi karena sudah di-handle oleh Firestore (orderBy),
-      // tapi kita biarkan sebagai fallback aman.
-      // fetchedChats.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
       
       setChats(fetchedChats);
       setLoading(false);
     }, (error) => { 
       console.error("Error fetching chats:", error);
-      // Jika error index, stop loading agar user tidak stuck
       if (error.code === 'failed-precondition') {
          console.log("INDEX DIPERLUKAN! Buka link di console log di atas untuk membuatnya otomatis.");
       }
@@ -90,19 +83,18 @@ export const ChatList: React.FC<ChatListProps> = ({
     return () => unsubscribe();
   }, [currentUser]);
   
-  // Effect to fetch phone numbers for non-contacts
+  // Effect to fetch User Data (Avatar & Name) for non-contacts
   useEffect(() => {
     chats.forEach(chat => {
       if (chat.type === 'direct') {
         const partnerId = chat.participants.find(p => p !== currentUser?.id);
-        if (partnerId && !contactsMap[partnerId] && !unknownUserPhones[partnerId] && (!adminProfile || partnerId !== adminProfile.id)) {
+        // Jika partner bukan kontak saya, bukan admin, dan belum ada di cache -> Fetch
+        if (partnerId && !contactsMap[partnerId] && !unknownUsersCache[partnerId] && (!adminProfile || partnerId !== adminProfile.id)) {
            // Fetch user data once
            getDoc(doc(db, 'users', partnerId)).then(snap => {
              if (snap.exists()) {
-               const data = snap.data();
-               if (data.phoneNumber) {
-                 setUnknownUserPhones(prev => ({...prev, [partnerId]: data.phoneNumber}));
-               }
+               const data = { id: snap.id, ...snap.data() } as User;
+               setUnknownUsersCache(prev => ({...prev, [partnerId]: data}));
              }
            });
         }
@@ -122,20 +114,60 @@ export const ChatList: React.FC<ChatListProps> = ({
     }
   }, [showNewChatModal, currentUser]);
 
-  // Helper untuk mendapatkan nama partner di list chat
+  // Helper untuk mendapatkan Display Name
   const getChatDisplayName = (chat: ChatPreview) => {
     if (chat.type === 'group') return chat.name;
     const partnerId = chat.participants.find(p => p !== currentUser?.id);
     if (!partnerId) return chat.name;
 
-    // Jika partner adalah Admin, gunakan nama dari adminProfile (Realtime)
+    // Jika partner adalah Admin
     if (adminProfile && partnerId === adminProfile.id) {
        return adminProfile.name;
     }
 
-    // Use fetched phone if available and not in contacts
-    const fallback = unknownUserPhones[partnerId] || chat.name;
-    return getDisplayName(partnerId, fallback, fallback); 
+    // Prioritas: Kontak -> Cache User -> Nama Chat Statis
+    if (contactsMap[partnerId]) return contactsMap[partnerId].savedName;
+    if (unknownUsersCache[partnerId]) return unknownUsersCache[partnerId].name || unknownUsersCache[partnerId].phoneNumber || chat.name;
+
+    return getDisplayName(partnerId, chat.name, chat.name); 
+  };
+
+  // Helper untuk mendapatkan Avatar yang Benar (Realtime)
+  const getChatAvatar = (chat: ChatPreview, displayName: string) => {
+    // 1. Jika Grup, pakai avatar grup (kecuali ada logika khusus grup, biasanya grup static)
+    if (chat.type === 'group') {
+      return chat.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.name)}&background=random`;
+    }
+
+    const partnerId = chat.participants.find(p => p !== currentUser?.id);
+    if (!partnerId) return chat.avatar;
+
+    // 2. Jika Admin
+    if (adminProfile && partnerId === adminProfile.id) {
+      return adminProfile.avatar;
+    }
+
+    let avatarUrl = '';
+
+    // 3. Cek Kontak
+    if (contactsMap[partnerId]) {
+      avatarUrl = contactsMap[partnerId].avatar;
+    } 
+    // 4. Cek Cache User (Non-Contact Realtime Fetch)
+    else if (unknownUsersCache[partnerId]) {
+      avatarUrl = unknownUsersCache[partnerId].avatar;
+    } 
+    // 5. Fallback ke data Chat statis (jarang dipakai jika logic benar)
+    else {
+      avatarUrl = chat.avatar;
+    }
+
+    // LOGIKA FINAL: Jika URL kosong atau default, gunakan UI Avatars (Inisial)
+    if (!avatarUrl || avatarUrl.includes('ui-avatars.com')) {
+      return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random&color=fff`;
+    }
+
+    return avatarUrl;
   };
 
   const filteredChats = chats.filter(c => {
@@ -206,20 +238,18 @@ export const ChatList: React.FC<ChatListProps> = ({
           filteredChats.map((chat) => {
             const unreadCount = (chat.unreadCounts && currentUser) ? (chat.unreadCounts[currentUser.id] || 0) : 0;
             const displayName = getChatDisplayName(chat);
+            const typingText = getTypingStatus(chat);
             
+            // Partner Logic untuk Verified Badge
             let partnerId = '';
             if (chat.type === 'direct') {
                const foundPartnerId = chat.participants.find(p => p !== currentUser?.id);
                if (foundPartnerId) partnerId = foundPartnerId;
             }
-
-            const typingText = getTypingStatus(chat);
-            
-            // VERIFIKASI ADMIN: Berdasarkan UID di adminProfile
             const isVerified = chat.type === 'direct' && adminProfile && partnerId === adminProfile.id;
 
-            // Foto Profil: Jika verified (Admin), gunakan foto asli adminProfile
-            const displayAvatar = isVerified && adminProfile ? adminProfile.avatar : chat.avatar;
+            // Resolve Avatar using new Logic
+            const displayAvatar = getChatAvatar(chat, displayName);
 
             return (
               <div key={chat.id} onClick={() => isSelectionMode ? handleSelectChat(chat.id) : onSelectChat(chat)} className={`group flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200 relative ${activeChatId === chat.id && !isSelectionMode ? 'bg-denim-700 shadow-md shadow-denim-700/20' : isSelectionMode && selectedChatIds.has(chat.id) ? 'bg-denim-100' : 'hover:bg-cream-200'}`}>
@@ -245,8 +275,8 @@ export const ChatList: React.FC<ChatListProps> = ({
           })
         )}
       </div>
+      {/* ... (Bottom Actions preserved) ... */}
       {!isSelectionMode && (<button onClick={() => setShowNewChatModal(true)} className="absolute bottom-6 right-6 rtl:left-6 rtl:right-auto w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl shadow-denim-600/30 flex items-center justify-center transition-transform hover:scale-105 active:scale-95 z-20"><Plus size={28} /></button>)}
-      {/* ... (Bottom Action Bar and Modals same as before) ... */}
       {isSelectionMode && (
         <div className="absolute bottom-0 left-0 right-0 bg-white border-t border-cream-200 p-3 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] z-20 animate-in slide-in-from-bottom-4 duration-200">
            <div className="flex justify-between items-center">
@@ -341,7 +371,13 @@ export const ChatList: React.FC<ChatListProps> = ({
                  filteredContacts.map(contact => {
                    const isContactVerified = adminProfile && contact.uid === adminProfile.id;
                    const displayName = isContactVerified ? adminProfile!.name : contact.savedName;
-                   const displayAvatar = isContactVerified ? adminProfile!.avatar : contact.avatar;
+                   
+                   // Logic Avatar Kontak
+                   let displayAvatar = contact.avatar;
+                   if (isContactVerified) displayAvatar = adminProfile!.avatar;
+                   if (!displayAvatar || displayAvatar.includes('ui-avatars.com')) {
+                       displayAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random&color=fff`;
+                   }
 
                    return (
                      <div 

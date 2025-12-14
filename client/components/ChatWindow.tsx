@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   MoreVertical, Phone, Video, Paperclip, Smile, Send, Mic, ArrowLeft, 
   Loader2, Image as ImageIcon, MapPin, FileText, User as UserIcon, 
-  X, Trash2, Download, ExternalLink, Info, CheckSquare, Reply, ChevronDown, BadgeCheck, UserPlus
+  X, Trash2, Download, ExternalLink, Info, CheckSquare, Reply, ChevronDown, BadgeCheck, UserPlus, CheckCircle2
 } from 'lucide-react';
 import { ChatPreview, Message, User, Contact } from '../types';
 import { format } from 'date-fns';
@@ -42,8 +42,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const typingTimeoutRef = useRef<any>(null);
   const t = translations[appSettings.language];
 
+  // REALTIME PARTNER DATA STATE
   const [partnerStatus, setPartnerStatus] = useState<'online' | 'offline'>('offline');
-  const [partnerPhone, setPartnerPhone] = useState<string>('');
+  const [partnerRealtimeData, setPartnerRealtimeData] = useState<User | null>(null);
 
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -67,6 +68,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const recordingTimerRef = useRef<any>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  
+  // State khusus untuk loading download file & Toast Notification
+  const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Add Contact State
   const [isAddingContact, setIsAddingContact] = useState(false);
@@ -77,14 +82,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   // VERIFIKASI ADMIN: Cek jika partner adalah Admin
   const isVerifiedChat = chat.type === 'direct' && adminProfile && partnerUid === adminProfile.id;
 
-  // Resolved Name: Jika verified (Admin), gunakan nama dari adminProfile. 
-  // Jika tidak, gunakan logika getDisplayName yang telah diperbarui untuk memprioritaskan Nomor HP jika belum kontak.
+  // Resolved Name Logic
   const resolvedName = isVerifiedChat && adminProfile 
     ? adminProfile.name 
-    : (partnerUid ? getDisplayName(partnerUid, partnerPhone || chat.name, partnerPhone) : chat.name);
+    : (partnerUid 
+        ? (contactsMap[partnerUid]?.savedName || partnerRealtimeData?.name || partnerRealtimeData?.phoneNumber || chat.name) 
+        : chat.name);
 
-  // Avatar: Jika verified, gunakan avatar Admin
-  const displayAvatar = isVerifiedChat && adminProfile ? adminProfile.avatar : chat.avatar;
+  // Avatar Logic
+  let rawAvatar = isVerifiedChat && adminProfile ? adminProfile.avatar : (contactsMap[partnerUid!]?.avatar || partnerRealtimeData?.avatar || chat.avatar);
+  
+  if (!rawAvatar || rawAvatar.includes('ui-avatars.com') || rawAvatar.includes('default')) {
+     rawAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(resolvedName)}&background=random&color=fff`;
+  }
+  const displayAvatar = rawAvatar;
 
   const bgStyle = appSettings.wallpaper === 'default' 
     ? { backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.08'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }
@@ -95,14 +106,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); };
   const scrollToMessage = (msgId: string) => { const el = document.getElementById(`msg-${msgId}`); if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('bg-yellow-100/20'); setTimeout(() => el.classList.remove('bg-yellow-100/20'), 1000); } };
 
-  // Setup Partner Status Listener (Without Encryption Setup)
+  // Setup Partner Status & DATA Listener
   useEffect(() => {
     if (chat.type === 'direct' && partnerUid) {
       const unsubPartner = onSnapshot(doc(db, 'users', partnerUid), async (docSnap) => {
         if (docSnap.exists()) {
-          const userData = docSnap.data() as User;
+          const userData = { id: docSnap.id, ...docSnap.data() } as User;
+          setPartnerRealtimeData(userData);
           setPartnerStatus(userData.status === 'online' ? 'online' : 'offline');
-          setPartnerPhone(userData.phoneNumber || '');
         }
       });
       return () => unsubPartner();
@@ -111,7 +122,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   useEffect(() => { if (showContactPicker) { const list = Object.values(contactsMap).sort((a: Contact, b: Contact) => a.savedName.localeCompare(b.savedName)); setMyContacts(list); } }, [showContactPicker, contactsMap]);
 
-  // Messages Listener (Standard Firestore - No Decryption)
+  // Messages Listener
   useEffect(() => {
     const messagesRef = collection(db, 'chats', chat.id, 'messages');
     const q = query(messagesRef, orderBy('createdAt', 'asc'));
@@ -139,15 +150,81 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         try {
           for (const uid of chat.participants) {
             const contact = contactsMap[uid];
-            if (contact) { members.push({ id: uid, name: contact.savedName, avatar: contact.avatar, phoneNumber: contact.phoneNumber, status: 'offline', bio: t.chatWindow.attach.contact }); } 
-            else { const docSnap = await getDoc(doc(db, 'users', uid)); if (docSnap.exists()) { members.push({ id: docSnap.id, ...docSnap.data() } as User); } }
+            if (adminProfile && uid === adminProfile.id) {
+                members.push(adminProfile);
+                continue;
+            }
+            if (contact) { 
+                members.push({ id: uid, name: contact.savedName, avatar: contact.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.savedName)}`, phoneNumber: contact.phoneNumber, status: 'offline', bio: t.chatWindow.attach.contact }); 
+            } else { 
+                const docSnap = await getDoc(doc(db, 'users', uid)); 
+                if (docSnap.exists()) { 
+                    const uData = docSnap.data();
+                    const uAvatar = uData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(uData.name)}`;
+                    members.push({ id: docSnap.id, ...uData, avatar: uAvatar } as User); 
+                } 
+            }
           }
           setGroupMembersInfo(members);
         } catch (e) { console.error("Failed fetching group members", e); } finally { setLoadingMembers(false); }
       };
       fetchMembers();
     }
-  }, [showInfoModal, chat, infoModalUser, contactsMap]);
+  }, [showInfoModal, chat, infoModalUser, contactsMap, adminProfile]);
+
+  // --- HELPER UNTUK TOAST NOTIFIKASI ---
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000); // Hilang dalam 3 detik
+  };
+
+  // --- FUNGSI HANDLE DOWNLOAD YANG DISEMPURNAKAN ---
+  const handleDirectDownload = async (url: string, fileName: string, msgId: string) => {
+    try {
+      setDownloadingFileId(msgId);
+      
+      const response = await fetch(url, { mode: 'cors' });
+      
+      if (!response.ok) throw new Error("Gagal mengambil file via fetch.");
+      
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName; // Paksa nama file
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+
+      showToast("File berhasil disimpan di perangkat");
+      
+    } catch (error) {
+      console.warn("Fetch download gagal, mencoba metode fallback...", error);
+      
+      if (url.includes('cloudinary.com')) {
+         let fallbackUrl = url;
+         if (url.includes('/upload/')) {
+             fallbackUrl = url.replace('/upload/', '/upload/fl_attachment/');
+         }
+         
+         const link = document.createElement('a');
+         link.href = fallbackUrl;
+         link.setAttribute('download', fileName);
+         link.setAttribute('target', '_self'); 
+         document.body.appendChild(link);
+         link.click();
+         document.body.removeChild(link);
+         
+         showToast("File berhasil disimpan di perangkat");
+      } else {
+         window.open(url, '_blank');
+      }
+      
+    } finally {
+      setDownloadingFileId(null);
+    }
+  };
 
   const handleHeaderClick = async () => { 
     if (chat.type === 'group') { 
@@ -173,25 +250,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
        return;
     }
 
+    let tempUser: Partial<User> | null = null;
     if (contactsMap[targetUid]) {
-      const contact = contactsMap[targetUid];
-      setInfoModalUser({ id: targetUid, name: contact.savedName, phoneNumber: contact.phoneNumber, avatar: contact.avatar, bio: t.chatWindow.attach.contact, status: 'offline' });
-      // Fetch fresh bio/status
-      getDoc(doc(db, 'users', targetUid)).then(snap => { if (snap.exists()) { setInfoModalUser(prev => prev ? ({ ...prev, bio: snap.data().bio, phoneNumber: snap.data().phoneNumber || prev.phoneNumber }) : null); } });
-    } else { 
-        // Not a contact, fetch from users db
-        const docSnap = await getDoc(doc(db, 'users', targetUid)); 
-        if (docSnap.exists()) { 
-            const userData = docSnap.data();
-            setInfoModalUser({ id: docSnap.id, ...userData } as User); 
-        } 
+       const contact = contactsMap[targetUid];
+       tempUser = { id: targetUid, name: contact.savedName, phoneNumber: contact.phoneNumber, avatar: contact.avatar, bio: t.chatWindow.attach.contact };
+    } else if (targetUid === partnerUid && partnerRealtimeData) {
+       tempUser = partnerRealtimeData;
+    }
+
+    if (tempUser) {
+        if (!tempUser.avatar || tempUser.avatar.includes('ui-avatars.com')) {
+            tempUser.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(tempUser.name || 'User')}&background=random&color=fff`;
+        }
+    }
+
+    const docSnap = await getDoc(doc(db, 'users', targetUid)); 
+    if (docSnap.exists()) { 
+         const userData = docSnap.data();
+         let finalAvatar = userData.avatar;
+         if (contactsMap[targetUid] && (!finalAvatar || finalAvatar.includes('default'))) {
+            finalAvatar = contactsMap[targetUid].avatar;
+         }
+         if (!finalAvatar) {
+            finalAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(contactsMap[targetUid]?.savedName || userData.name)}&background=random&color=fff`;
+         }
+         const finalName = contactsMap[targetUid]?.savedName || userData.name;
+         setInfoModalUser({ id: docSnap.id, ...userData, name: finalName, avatar: finalAvatar } as User);
+    } else if (tempUser) {
+         setInfoModalUser(tempUser as User);
     }
     setShowInfoModal(true);
   };
   
   const handleAddUnknownContact = async () => {
       if (!infoModalUser || !newContactName) return;
-      
       try {
           await addDoc(collection(db, 'users', currentUser.id, 'contacts'), {
               uid: infoModalUser.id,
@@ -201,7 +293,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           });
           alert("Kontak berhasil disimpan!");
           setIsAddingContact(false);
-          setShowInfoModal(false); // Close modal to refresh UI naturally
+          setShowInfoModal(false); 
       } catch (error) {
           alert("Gagal menyimpan kontak.");
           console.error(error);
@@ -249,7 +341,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     switch (msg.type) {
       case 'image': return (<div className="mb-1"><img src={msg.fileUrl} onClick={() => setZoomImage(msg.fileUrl || null)} className="rounded-lg max-h-64 object-cover cursor-pointer" />{msg.content && <p className={`mt-1 ${fontSizeClass}`}>{msg.content}</p>}</div>);
       case 'audio': return (<div className="flex items-center gap-3 min-w-[200px] py-1"><div className={`p-2 rounded-full ${isMe ? 'bg-denim-600' : 'bg-denim-100'}`}><Mic size={20} className={isMe ? 'text-white' : 'text-denim-600'} /></div><audio controls src={msg.fileUrl} className="h-8 w-48" /></div>);
-      case 'document': return (<div className="flex items-center gap-3 bg-black/5 p-3 rounded-lg min-w-[220px]"><FileText size={24} className="text-red-500" /><div className="flex-1 overflow-hidden"><p className="text-sm font-semibold truncate">{msg.fileName}</p><p className="text-[10px] opacity-70">{msg.fileSize}</p></div><a href={msg.fileUrl} download={msg.fileName} target="_blank" rel="noreferrer" className="p-2 bg-white rounded-full shadow-sm"><Download size={18} className="text-denim-600"/></a></div>);
+      case 'document': 
+        const isDownloading = downloadingFileId === msg.id;
+        return (
+          <div className="flex items-center gap-3 bg-black/5 p-3 rounded-lg min-w-[220px] max-w-[280px]">
+            <div className="shrink-0">
+               <FileText size={28} className="text-red-500" />
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <p className="text-sm font-semibold break-words line-clamp-2 leading-tight mb-0.5" title={msg.fileName}>
+                {msg.fileName}
+              </p>
+              <p className="text-[10px] opacity-70">{msg.fileSize} • Document</p>
+            </div>
+            <button 
+              onClick={() => msg.fileUrl && handleDirectDownload(msg.fileUrl, msg.fileName || 'document', msg.id)}
+              disabled={isDownloading}
+              className="shrink-0 p-2.5 bg-white rounded-full shadow-sm hover:bg-gray-100 transition-colors disabled:opacity-70 flex items-center justify-center h-10 w-10"
+            >
+              {isDownloading ? (
+                 <Loader2 size={18} className="animate-spin text-denim-600" />
+              ) : (
+                 <Download size={18} className="text-denim-600"/>
+              )}
+            </button>
+          </div>
+        );
       case 'location': return (<a href={`https://www.google.com/maps?q=${msg.location?.latitude},${msg.location?.longitude}`} target="_blank" rel="noreferrer" className="block min-w-[200px]"><div className="bg-cream-100 h-32 rounded-lg flex items-center justify-center mb-2 relative overflow-hidden border border-cream-200"><div className="absolute inset-0 opacity-50 bg-[url('https://upload.wikimedia.org/wikipedia/commons/e/ec/World_map_blank_without_borders.svg')] bg-cover"></div><MapPin size={32} className="text-red-500 relative z-10 animate-bounce" /></div><div className="flex items-center gap-2 text-sm text-blue-500 font-medium px-1"><ExternalLink size={14} /> <span>Open Map</span></div></a>);
       case 'contact': return (<div className="bg-black/5 p-3 rounded-lg min-w-[200px]"><div className="flex items-center gap-3 mb-2"><img src={msg.contact?.avatar} className="w-10 h-10 rounded-full bg-gray-300" /><div><p className="font-bold text-sm">{msg.contact?.name}</p><p className="text-xs">{msg.contact?.phoneNumber}</p></div></div><button onClick={() => msg.contact?.uid && onStartChat(msg.contact.uid)} className="w-full py-2 bg-denim-600 text-white rounded-lg text-xs font-bold">Chat</button></div>);
       default: return <p className={`${fontSizeClass} leading-relaxed whitespace-pre-wrap`}>{msg.content}</p>;
@@ -303,18 +420,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           const isMe = msg.senderId === currentUser.id;
           
           let senderName: string | null = null;
+          let senderAvatar: string | null = null;
           let isMsgAdmin = false;
 
           if (!isMe && chat.type === 'group') {
              if (adminProfile && msg.senderId === adminProfile.id) {
                senderName = adminProfile.name;
+               senderAvatar = adminProfile.avatar;
                isMsgAdmin = true;
              } else {
-               // Fallback if not contact: display phone number if available in getDisplayName, else Name
-               // Note: getDisplayName needs phone number, but msg doesn't carry it. 
-               // In groups, resolving unknown users is harder without storing user metadata in message or fetching.
-               // For now, rely on getDisplayName with available data.
                senderName = getDisplayName(msg.senderId);
+               if (contactsMap[msg.senderId]) {
+                 senderAvatar = contactsMap[msg.senderId].avatar;
+               } 
+               if (!senderAvatar) {
+                 senderAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}&background=random&color=fff`;
+               }
              }
           }
 
@@ -323,13 +444,44 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           return (
             <div key={msg.id} id={`msg-${msg.id}`} className={`flex items-start gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} group`}>
               {isSelectionMode && (<div onClick={() => handleMessageSelect(msg.id)} className={`mt-2 cursor-pointer w-5 h-5 rounded border flex items-center justify-center ${isSelected ? 'bg-denim-600 border-denim-600' : 'border-denim-300 bg-white'}`}>{isSelected && <CheckSquare size={14} className="text-white"/>}</div>)}
-              {!isMe && chat.type === 'group' && !isSelectionMode && (<img src={`https://ui-avatars.com/api/?name=${senderName || '?'}&background=random`} className="w-8 h-8 rounded-full mt-1 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => handleOpenUserInfo(msg.senderId)}/>)}
-              <div className={`max-w-[85%] md:max-w-[65%] flex flex-col ${isMe ? 'items-end' : 'items-start'} relative`}>
+              
+              {!isMe && chat.type === 'group' && !isSelectionMode && (
+                 <img 
+                    src={senderAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName || 'Unknown')}`} 
+                    className="w-8 h-8 rounded-full mt-1 cursor-pointer hover:opacity-80 transition-opacity object-cover border border-cream-200" 
+                    onClick={() => handleOpenUserInfo(msg.senderId)}
+                    alt={senderName || 'Sender'}
+                 />
+              )}
+
+              <div className={`max-w-[85%] md:max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'} relative`}>
                 {senderName && (<span className="text-[10px] text-denim-500 font-bold mb-1 ms-1 flex items-center gap-1">{senderName}{isMsgAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</span>)}
                 <div className={`px-4 py-2 rounded-2xl relative shadow-sm min-w-[120px] transition-colors ${isMe ? 'bg-denim-700 text-white rounded-be-none' : 'bg-white text-denim-900 rounded-bs-none border border-cream-200'} ${isSelected ? 'ring-2 ring-denim-400 ring-offset-2' : ''}`} onContextMenu={(e) => { e.preventDefault(); if (!isSelectionMode) setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }}>
                   {msg.replyTo && (<div className={`mb-2 p-2 rounded-lg text-xs border-s-4 cursor-pointer hover:opacity-80 ${isMe ? 'bg-black/20 border-white/50 text-white' : 'bg-cream-100 border-denim-500 text-denim-800'}`} onClick={() => scrollToMessage(msg.replyTo!.id)}><p className="font-bold mb-0.5">{msg.replyTo.senderName}</p><p className="truncate opacity-80">{msg.replyTo.content}</p></div>)}
                   {renderMessageContent(msg, isMe)}
-                  <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 ${isMe ? 'text-denim-100' : 'text-denim-400'}`}>{format(msg.timestamp, 'HH:mm')}{isMe && <span className={msg.readBy?.length ? 'text-green-300' : 'text-denim-100'}>{msg.status === 'sent' && !msg.readBy?.length ? '✓' : '✓✓'}</span>}</div>
+                  <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 ${isMe ? 'text-denim-100' : 'text-denim-400'}`}>
+                    {format(msg.timestamp, 'HH:mm')}
+                    {isMe && (
+                      <span className={`font-bold tracking-tighter ${
+                        // LOGIKA CENTANG
+                        // 1. Jika sudah dibaca (ada readBy), maka HIJAU (Menyala)
+                        (msg.readBy && msg.readBy.length > 0) 
+                          ? 'text-green-300' 
+                          // 2. Jika belum dibaca TAPI Partner ONLINE (Direct Chat), maka PUTIH REDUP (Terkirim & Aktif)
+                          : (chat.type === 'direct' && partnerStatus === 'online') 
+                            ? 'text-denim-300' 
+                            // 3. Sisanya (Offline / Sent), tetap PUTIH REDUP (nanti jumlah centangnya yang beda)
+                            : 'text-denim-300'
+                      }`}>
+                        {/* TAMPILAN JUMLAH CENTANG */}
+                        {/* Jika sudah dibaca ATAU (Partner Online di Chat Direct), tampilkan Centang 2 */}
+                        {(msg.readBy && msg.readBy.length > 0) || (chat.type === 'direct' && partnerStatus === 'online') 
+                          ? '✓✓' 
+                          : '✓' 
+                        }
+                      </span>
+                    )}
+                  </div>
                   {!isSelectionMode && (<button onClick={(e) => { e.stopPropagation(); setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }} className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full ${isMe ? '-start-8 text-denim-500' : '-end-8 text-denim-500'}`}><ChevronDown size={18} /></button>)}
                   {activeMessageMenu === msg.id && (<div className={`absolute top-8 z-20 bg-white shadow-xl rounded-xl border border-cream-200 py-1 w-32 animate-in fade-in zoom-in-95 ${isMe ? 'end-0' : 'start-0'}`}><button onClick={() => handleReply(msg)} className="w-full text-start px-3 py-2 text-sm text-denim-800 hover:bg-cream-50 flex items-center gap-2"><Reply size={14}/> {t.chatWindow.reply}</button><button onClick={() => { setIsSelectionMode(true); setSelectedMessageIds(new Set([msg.id])); setActiveMessageMenu(null); }} className="w-full text-start px-3 py-2 text-sm text-denim-800 hover:bg-cream-50 flex items-center gap-2"><CheckSquare size={14}/> {t.chatWindow.select}</button><button onClick={() => { setShowDeleteConfirm(true); setSelectedMessageIds(new Set([msg.id])); setActiveMessageMenu(null); }} className="w-full text-start px-3 py-2 text-sm text-red-500 hover:bg-red-50 flex items-center gap-2 border-t border-cream-100"><Trash2 size={14}/> {t.common.delete}</button></div>)}
                   {activeMessageMenu === msg.id && <div className="fixed inset-0 z-10" onClick={() => setActiveMessageMenu(null)}></div>}
@@ -376,8 +528,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
              <button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-10 rtl:left-4 rtl:right-auto"><X size={20} /></button>
              <div className="h-32 bg-denim-700 relative rounded-t-2xl shrink-0"><div className="absolute inset-0 opacity-10 pattern-bg rounded-t-2xl"></div></div>
              <div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-0 flex-1 overflow-y-auto custom-scrollbar">
-                <div className="relative group cursor-pointer" onClick={() => setZoomImage(chat.type === 'group' && !infoModalUser ? chat.avatar : (infoModalUser?.avatar || chat.avatar))}>
-                  <img src={chat.type === 'group' && !infoModalUser ? chat.avatar : (infoModalUser?.avatar || chat.avatar)} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" />
+                <div className="relative group cursor-pointer" onClick={() => setZoomImage(chat.type === 'group' && !infoModalUser ? chat.avatar : (infoModalUser?.avatar || displayAvatar))}>
+                  <img src={chat.type === 'group' && !infoModalUser ? chat.avatar : (infoModalUser?.avatar || displayAvatar)} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" />
                 </div>
                 <h2 className="mt-3 text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">
                   {chat.type === 'group' && !infoModalUser ? chat.name : infoModalUser?.name}
@@ -385,7 +537,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 </h2>
                 <p className="text-denim-500 text-sm font-medium mb-4 text-center">{chat.type === 'group' && !infoModalUser ? `${chat.participants.length} ${t.groups.members}` : (infoModalUser?.phoneNumber || '-')}</p>
                 
-                {/* --- ADD CONTACT BUTTON LOGIC --- */}
                 {chat.type === 'direct' && infoModalUser && !contactsMap[infoModalUser.id] && (!adminProfile || infoModalUser.id !== adminProfile.id) && (
                    <div className="mb-4 w-full">
                        {!isAddingContact ? (
@@ -408,9 +559,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 <div className="w-full bg-cream-50 p-4 rounded-xl border border-cream-200 text-center shrink-0"><p className="text-sm text-denim-700 italic">"{chat.type === 'group' && !infoModalUser ? (chat.description || '-') : (infoModalUser?.bio || '-')}"</p></div>
                 {chat.type === 'group' && !infoModalUser && (<div className="mt-4 w-full"><p className="text-xs font-bold text-denim-400 uppercase tracking-wider mb-2 text-center">{t.groups.members}</p><div className="space-y-2 mt-2">{loadingMembers ? <div className="flex justify-center"><Loader2 className="animate-spin text-denim-400" size={20}/></div> : groupMembersInfo.map(m => {
                     const isAdminMember = adminProfile && m.id === adminProfile.id;
+                    const memberAvatar = isAdminMember ? adminProfile!.avatar : (m.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}`);
                     return (
                         <div key={m.id} className="flex items-center gap-3 p-2 hover:bg-cream-50 rounded-lg">
-                            <img src={isAdminMember ? adminProfile!.avatar : m.avatar} className="w-8 h-8 rounded-full object-cover"/>
+                            <img src={memberAvatar} className="w-8 h-8 rounded-full object-cover"/>
                             <div className="text-start flex-1 min-w-0 flex items-center gap-1">
                                 <p className="text-sm font-semibold text-denim-800 truncate">{isAdminMember ? adminProfile!.name : m.name}</p>
                                 {isAdminMember && <BadgeCheck size={14} className="text-white fill-blue-500" />}
@@ -428,6 +580,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-0 animate-in fade-in duration-200" onClick={() => setZoomImage(null)}>
            <button className="absolute top-4 right-4 text-white/80 hover:text-white z-[101] bg-black/40 rounded-full p-2 rtl:left-4 rtl:right-auto"><X size={28} /></button>
            <img src={zoomImage} className="w-full h-full object-contain pointer-events-none select-none" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+
+      {/* TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[90] bg-denim-800 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-2">
+           <CheckCircle2 size={18} className="text-green-400" />
+           <span className="text-sm font-medium">{toastMessage}</span>
         </div>
       )}
 
