@@ -59,18 +59,15 @@ export const ProfileView: React.FC<SidebarViewProps> = ({ onBack, appSettings })
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Local state for avatar preview to ensure instant feedback
   const [localAvatar, setLocalAvatar] = useState(currentUser?.avatar);
 
   const t = translations[appSettings!.language];
 
-  // Update local state when currentUser changes (e.g. after save)
   useEffect(() => {
     if (currentUser) {
       setName(currentUser.name);
       setBio(currentUser.bio || '');
       setPhoneNumber(currentUser.phoneNumber || '');
-      // Only update local avatar if not currently saving (prevent flickering)
       if (!isSaving) setLocalAvatar(currentUser.avatar);
     }
   }, [currentUser, isSaving]);
@@ -96,28 +93,19 @@ export const ProfileView: React.FC<SidebarViewProps> = ({ onBack, appSettings })
     if (e.target.files && e.target.files[0] && currentUser) {
       const file = e.target.files[0];
       
-      // Preview immediately
       const previewUrl = URL.createObjectURL(file);
       setLocalAvatar(previewUrl);
       setIsSaving(true);
 
       try {
         const url = await uploadImageToCloudinary(file);
-        
-        // Add timestamp to force cache refresh (Cache Busting)
         const urlWithTimestamp = `${url}?t=${Date.now()}`;
-
-        // Update profile with new avatar using AuthContext
-        // This handles Firestore update and state sync
         await updateProfile(name, bio, phoneNumber, urlWithTimestamp);
-        
-        // Ensure local state is consistent
         setLocalAvatar(urlWithTimestamp);
-        
       } catch (e) {
         console.error(e);
         alert("Gagal upload foto");
-        setLocalAvatar(currentUser.avatar); // Revert on error
+        setLocalAvatar(currentUser.avatar); 
       } finally {
         setIsSaving(false);
       }
@@ -141,7 +129,6 @@ export const ProfileView: React.FC<SidebarViewProps> = ({ onBack, appSettings })
               )}
               <img src={localAvatar} alt={currentUser.name} className="w-full h-full object-cover" />
             </div>
-            {/* Overlay Camera Icon */}
             <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                <Camera className="text-white" size={28} />
             </div>
@@ -250,32 +237,43 @@ export const BroadcastView: React.FC<SidebarViewProps> = ({ onBack, appSettings 
     setStatus(t.broadcast.sending);
 
     try {
+      // 1. Ambil semua User (kecuali saya sendiri)
       const usersSnap = await getDocs(collection(db, 'users'));
       const allUsers = usersSnap.docs
         .map(d => ({ id: d.id, ...d.data() } as User))
         .filter(u => u.id !== currentUser.id);
+
+      // 2. Ambil SEMUA chat SAYA (Admin) untuk pengecekan
+      // PERBAIKAN: Query berdasarkan peserta SAYA, bukan peserta target
+      // Ini mencegah error "Missing or insufficient permissions"
+      const myChatsQuery = query(
+          collection(db, 'chats'),
+          where('type', '==', 'direct'),
+          where('participants', 'array-contains', currentUser.id)
+      );
+      const myChatsSnap = await getDocs(myChatsQuery);
+      
+      // 3. Buat Peta (Map) TargetUserID -> ChatDoc
+      const existingChatMap = new Map<string, string>(); // UID -> ChatID
+      myChatsSnap.docs.forEach(doc => {
+          const data = doc.data();
+          const partnerId = data.participants.find((p: string) => p !== currentUser.id);
+          if (partnerId) {
+              existingChatMap.set(partnerId, doc.id);
+          }
+      });
 
       let sentCount = 0;
       const batchLimit = 400; 
       let batch = writeBatch(db);
       let opCount = 0;
 
+      // 4. Loop Users dan Tentukan Aksi (Pakai Chat Lama / Buat Baru)
       for (const user of allUsers) {
-        const q = query(
-           collection(db, 'chats'),
-           where('type', '==', 'direct'),
-           where('participants', 'array-contains', user.id)
-        );
-        const chatSnap = await getDocs(q);
-        let chatId = '';
-        const existingChat = chatSnap.docs.find(d => {
-           const data = d.data();
-           return data.participants.includes(currentUser.id) && data.participants.includes(user.id);
-        });
+        let chatId = existingChatMap.get(user.id);
 
-        if (existingChat) {
-          chatId = existingChat.id;
-        } else {
+        if (!chatId) {
+          // Buat Chat Baru jika belum ada
           const newChatRef = doc(collection(db, 'chats'));
           batch.set(newChatRef, {
             type: 'direct',
@@ -291,9 +289,21 @@ export const BroadcastView: React.FC<SidebarViewProps> = ({ onBack, appSettings 
           });
           chatId = newChatRef.id;
           opCount++;
+        } else {
+            // Update Chat Lama
+            const chatRef = doc(db, 'chats', chatId);
+            batch.update(chatRef, {
+               lastMessage: message,
+               lastMessageType: 'text',
+               updatedAt: serverTimestamp(),
+               [`unreadCounts.${user.id}`]: 1 
+            });
+            opCount++;
         }
 
-        await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        // Tambahkan Pesan ke Sub-collection
+        const messageRef = doc(collection(db, 'chats', chatId, 'messages'));
+        batch.set(messageRef, {
            senderId: currentUser.id,
            content: message,
            type: 'text',
@@ -301,17 +311,10 @@ export const BroadcastView: React.FC<SidebarViewProps> = ({ onBack, appSettings 
            readBy: [],
            createdAt: serverTimestamp()
         });
-        
-        const chatRef = doc(db, 'chats', chatId);
-        batch.update(chatRef, {
-           lastMessage: message,
-           lastMessageType: 'text',
-           updatedAt: serverTimestamp(),
-           [`unreadCounts.${user.id}`]: 1 
-        });
         opCount++;
         sentCount++;
 
+        // Commit jika batch penuh
         if (opCount >= batchLimit) {
            await batch.commit();
            batch = writeBatch(db);
@@ -319,6 +322,7 @@ export const BroadcastView: React.FC<SidebarViewProps> = ({ onBack, appSettings 
         }
       }
 
+      // Commit sisa batch
       if (opCount > 0) await batch.commit();
 
       setStatus(t.broadcast.success.replace('{count}', sentCount.toString()));
