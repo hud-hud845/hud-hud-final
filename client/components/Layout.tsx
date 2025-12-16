@@ -53,8 +53,9 @@ export const Layout: React.FC = () => {
 
   // --- CEK IZIN NOTIFIKASI ---
   useEffect(() => {
-    if ('Notification' in window) {
-      // Jika izin 'default' (belum dipilih), tampilkan banner
+    // Cek jika browser mendukung notifikasi
+    if ('Notification' in window && 'serviceWorker' in navigator) {
+      // Tampilkan banner hanya jika izin masih 'default' (belum dipilih user)
       if (Notification.permission === 'default') {
         setShowPermissionBanner(true);
       }
@@ -62,43 +63,53 @@ export const Layout: React.FC = () => {
   }, []);
 
   // Fungsi yang dipanggil saat tombol di banner diklik
-  const handleEnableNotifications = async () => {
-    if (currentUser) {
-      const token = await requestFcmToken(currentUser.id);
-      if (token) {
-        setShowPermissionBanner(false);
-        // Tes notifikasi lokal
-        new Notification("Notifikasi Aktif", { body: "Hud-Hud siap menerima pesan." });
+  // PERBAIKAN: Langsung hilangkan banner agar UI tidak macet/freeze
+  const handleEnableNotifications = () => {
+    // 1. UI Feedback Instant: Hilangkan banner segera
+    setShowPermissionBanner(false);
+
+    // 2. Jalankan proses request izin secara async agar tidak memblokir UI thread utama
+    setTimeout(async () => {
+      if (currentUser) {
+        try {
+          const token = await requestFcmToken(currentUser.id);
+          if (token) {
+            console.log("Notifikasi berhasil diaktifkan.");
+            // Opsional: Bunyikan suara ting atau toast kecil jika perlu
+          }
+        } catch (error) {
+          console.error("Gagal mengaktifkan notifikasi:", error);
+        }
       }
-    }
+    }, 100); 
   };
 
   // --- INTEGRASI FCM TOKEN SAAT LOGIN (Jika sudah diizinkan sebelumnya) ---
   useEffect(() => {
     if (currentUser && Notification.permission === 'granted') {
       cleanupExpiredMessages(currentUser.id);
-      requestFcmToken(currentUser.id);
+      // Refresh token di background tanpa mengganggu user
+      requestFcmToken(currentUser.id).catch(err => console.error("Token refresh error", err));
     }
   }, [currentUser]);
 
-  // --- LISTENER PESAN FOREGROUND FCM ---
+  // --- LISTENER PESAN FOREGROUND FCM (Saat aplikasi dibuka) ---
   useEffect(() => {
     onMessageListener().then((payload: any) => {
-      // Menangani pesan push saat aplikasi terbuka
-      // Kita bisa memunculkan notifikasi sistem di sini juga
+      // Tangani notifikasi saat app sedang dibuka (Active)
       if (payload?.notification) {
-          sendSystemNotification(
-              payload.notification.title || "Pesan Baru",
-              payload.notification.body || "Anda mendapat pesan baru",
-              '/vite.svg'
-          );
+          const title = payload.notification.title || "Hud-Hud";
+          const body = payload.notification.body || "Pesan baru masuk";
+          
+          // Kirim notifikasi sistem meskipun aplikasi terbuka (sesuai request agar konsisten)
+          // Browser modern mungkin akan menumpuk ini di action center
+          sendSystemNotification(title, body, '/vite.svg');
       }
     });
   }, []);
 
   // --- LOGIKA NOTIFIKASI IN-APP (FIRESTORE LISTENER) ---
-  // Kita gunakan ini HANYA untuk Notifikasi Sistem (Desktop/Android Native)
-  // TIDAK ADA Bubble dalam aplikasi lagi.
+  // Digunakan sebagai fallback real-time saat aplikasi terbuka
   useEffect(() => {
     if (!currentUser) return;
 
@@ -123,13 +134,13 @@ export const Layout: React.FC = () => {
           if (myUnreadCount > 0 && !isChatOpen && isRecent) {
              let displaySender = data.name; 
              let displayAvatar = data.avatar;
-             const notifBody = data.lastMessage || "Ada pesan baru";
+             const notifBody = data.lastMessage || "Pesan baru diterima";
              const shouldNotify = data.type === 'group' ? appSettings.notifGroup : appSettings.notifMessage;
 
              if (shouldNotify && appSettings.notifDesktop) {
-                // Munculkan notifikasi sistem (Status bar)
+                // Notifikasi Sistem Lokal (Fallback jika FCM delay)
                 sendSystemNotification(
-                  displaySender, 
+                  `Hud-Hud: ${displaySender}`, 
                   notifBody, 
                   displayAvatar
                 );
@@ -286,14 +297,14 @@ export const Layout: React.FC = () => {
       
       {/* BANNER IZIN NOTIFIKASI */}
       {showPermissionBanner && (
-        <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md">
+        <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md animate-in slide-in-from-top-full duration-300">
            <div className="flex items-center gap-3">
              <div className="p-2 bg-white/20 rounded-full">
                <Bell size={18} className="text-white animate-pulse" />
              </div>
              <div className="text-sm">
                <p className="font-bold">Aktifkan Notifikasi?</p>
-               <p className="text-xs text-denim-100">Dapatkan pesan masuk saat aplikasi tertutup.</p>
+               <p className="text-xs text-denim-100">Agar pesan masuk tetap terlihat saat aplikasi ditutup.</p>
              </div>
            </div>
            <div className="flex items-center gap-2">
@@ -305,9 +316,9 @@ export const Layout: React.FC = () => {
               </button>
               <button 
                 onClick={handleEnableNotifications}
-                className="px-3 py-1.5 text-xs bg-white text-denim-700 font-bold rounded-lg hover:bg-cream-100 shadow-sm"
+                className="px-3 py-1.5 text-xs bg-white text-denim-700 font-bold rounded-lg hover:bg-cream-100 shadow-sm active:scale-95 transition-transform"
               >
-                Aktifkan
+                Izinkan
               </button>
            </div>
         </div>

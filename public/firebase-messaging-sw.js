@@ -4,7 +4,6 @@ importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js')
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
 // 1. Inisialisasi Firebase di dalam Service Worker (Background)
-// Config ini HARUS sama persis dengan yang ada di client/services/firebase.ts
 const firebaseConfig = {
   apiKey: "AIzaSyCkSqqH33px6Xjf9GGGWQD0rdJ3wBHOgmw",
   authDomain: "hud-hud-mesenger.firebaseapp.com",
@@ -21,43 +20,62 @@ firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
 // 3. Handle Background Messages
-// Ini yang akan jalan kalau Web/Tab DITUTUP
+// Ini yang dijalankan saat browser/tab TERTUTUP (Background)
 messaging.onBackgroundMessage(function(payload) {
-  console.log('[firebase-messaging-sw.js] Received background message ', payload);
+  console.log('[firebase-messaging-sw.js] Background message received ', payload);
   
-  // Customize notification here
-  const notificationTitle = payload.notification.title;
+  // LOGIKA TAMPILAN NOTIFIKASI SESUAI REQUEST:
+  // Judul: "Hud-Hud: [Nama Pengirim]"
+  // Body: "[Isi Pesan]"
+  // Link: Disembunyikan sebisa mungkin (Browser tetap akan menampilkan origin domain kecil di bawah demi keamanan)
+  
+  // Ambil data dari payload yang dikirim backend/console
+  const originalTitle = payload.notification.title || "Pesan Baru";
+  const originalBody = payload.notification.body || "Anda memiliki pesan baru.";
+  
+  // Format Ulang:
+  // Jika title asli sudah mengandung nama pengirim, gunakan itu.
+  // Jika title asli generik, kita set "Hud-Hud".
+  let finalTitle = "Hud-Hud";
+  let finalBody = originalBody;
+
+  // Jika payload title bukan "Pesan Baru", asumsikan itu nama pengirim
+  if (originalTitle && originalTitle !== "Pesan Baru") {
+      finalTitle = `Hud-Hud: ${originalTitle}`;
+  }
+
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: payload.notification.icon || '/vite.svg', // Pastikan icon ada di public folder
-    badge: '/vite.svg',
-    tag: 'hud-hud-v1', // Grouping notifikasi
-    renotify: true,
-    data: payload.data // Custom data (misal chat_id untuk redirect saat diklik)
+    body: finalBody,
+    icon: '/vite.svg', // Icon Aplikasi
+    badge: '/vite.svg', // Icon kecil monokrom untuk status bar Android
+    tag: 'hud-hud-message', // Grouping agar tidak menumpuk
+    renotify: true, // Getar ulang jika ada pesan baru
+    vibrate: [200, 100, 200], // Pola getar
+    data: {
+        url: '/' // URL tujuan saat diklik
+    }
   };
 
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  return self.registration.showNotification(finalTitle, notificationOptions);
 });
 
 // 4. Handle Notification Click
-// Saat notifikasi diklik, buka tab baru atau fokus ke tab yang sudah ada
 self.addEventListener('notificationclick', function(event) {
-  console.log('[Service Worker] Notification click Received.');
   event.notification.close();
 
-  // URL yang mau dibuka (Halaman Chat)
+  // Buka aplikasi saat notifikasi diklik
   const urlToOpen = event.notification.data?.url || '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(windowClients) {
-      // Cek apakah tab sudah terbuka?
+      // Cek apakah ada tab yang sudah terbuka
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if (client.url.includes(urlToOpen) && 'focus' in client) {
           return client.focus();
         }
       }
-      // Jika tidak, buka tab baru
+      // Jika tidak ada, buka tab baru
       if (clients.openWindow) {
         return clients.openWindow(urlToOpen);
       }

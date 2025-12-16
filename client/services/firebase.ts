@@ -4,6 +4,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from "firebase/analytics";
+// @ts-ignore
 import { getMessaging } from "firebase/messaging";
 
 // KONFIGURASI FIREBASE (Hud-Hud Messenger)
@@ -30,6 +31,13 @@ if (typeof window !== 'undefined') {
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
+export const messaging = typeof window !== 'undefined' ? (() => {
+  try {
+    return getMessaging(app);
+  } catch (e) {
+    console.warn("Firebase Messaging failed to initialize", e);
+    return null;
+  }
+})() : null;
 
 export default app;
