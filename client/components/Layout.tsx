@@ -10,10 +10,10 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc
 import { db } from '../services/firebase';
 import { translations } from '../utils/translations';
 import { cleanupExpiredMessages } from '../services/cleanup';
-// NotificationBubble dihilangkan
-import { requestNotificationPermission, sendSystemNotification } from '../utils/notificationHelper';
-// Import helper FCM baru
+// Helper notifikasi sistem & FCM
+import { sendSystemNotification } from '../utils/notificationHelper';
 import { requestFcmToken, onMessageListener } from '../utils/fcm';
+import { Bell, X } from 'lucide-react';
 
 export interface AppSettings {
   wallpaper: string; 
@@ -32,8 +32,7 @@ export const Layout: React.FC = () => {
   const [selectedChat, setSelectedChat] = useState<ChatPreview | undefined>(undefined);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>('chats');
-  
-  // State Active Notification Bubble dihapus
+  const [showPermissionBanner, setShowPermissionBanner] = useState(false);
 
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('hudhud_settings');
@@ -52,17 +51,32 @@ export const Layout: React.FC = () => {
 
   const [adminProfile, setAdminProfile] = useState<User | null>(null);
 
+  // --- CEK IZIN NOTIFIKASI ---
   useEffect(() => {
-    requestNotificationPermission();
+    if ('Notification' in window) {
+      // Jika izin 'default' (belum dipilih), tampilkan banner
+      if (Notification.permission === 'default') {
+        setShowPermissionBanner(true);
+      }
+    }
   }, []);
 
-  // --- INTEGRASI FCM TOKEN ---
-  useEffect(() => {
+  // Fungsi yang dipanggil saat tombol di banner diklik
+  const handleEnableNotifications = async () => {
     if (currentUser) {
-      // 1. Cleanup pesan lama
-      cleanupExpiredMessages(currentUser.id);
+      const token = await requestFcmToken(currentUser.id);
+      if (token) {
+        setShowPermissionBanner(false);
+        // Tes notifikasi lokal
+        new Notification("Notifikasi Aktif", { body: "Hud-Hud siap menerima pesan." });
+      }
+    }
+  };
 
-      // 2. Minta & Simpan Token FCM (Untuk notifikasi background)
+  // --- INTEGRASI FCM TOKEN SAAT LOGIN (Jika sudah diizinkan sebelumnya) ---
+  useEffect(() => {
+    if (currentUser && Notification.permission === 'granted') {
+      cleanupExpiredMessages(currentUser.id);
       requestFcmToken(currentUser.id);
     }
   }, [currentUser]);
@@ -70,12 +84,21 @@ export const Layout: React.FC = () => {
   // --- LISTENER PESAN FOREGROUND FCM ---
   useEffect(() => {
     onMessageListener().then((payload: any) => {
-      // Menangani pesan push saat aplikasi terbuka (opsional)
+      // Menangani pesan push saat aplikasi terbuka
+      // Kita bisa memunculkan notifikasi sistem di sini juga
+      if (payload?.notification) {
+          sendSystemNotification(
+              payload.notification.title || "Pesan Baru",
+              payload.notification.body || "Anda mendapat pesan baru",
+              '/vite.svg'
+          );
+      }
     });
   }, []);
 
-
   // --- LOGIKA NOTIFIKASI IN-APP (FIRESTORE LISTENER) ---
+  // Kita gunakan ini HANYA untuk Notifikasi Sistem (Desktop/Android Native)
+  // TIDAK ADA Bubble dalam aplikasi lagi.
   useEffect(() => {
     if (!currentUser) return;
 
@@ -93,29 +116,23 @@ export const Layout: React.FC = () => {
           const myUnreadCount = data.unreadCounts?.[currentUser.id] || 0;
           const isChatOpen = selectedChat?.id === chatId;
           
-          // Cek waktu agar tidak notif pesan lama saat refresh
+          // Cek waktu
           const updatedAtTime = data.updatedAt?.seconds ? data.updatedAt.seconds * 1000 : Date.now();
           const isRecent = (Date.now() - updatedAtTime) < 10000; 
 
           if (myUnreadCount > 0 && !isChatOpen && isRecent) {
-             
              let displaySender = data.name; 
              let displayAvatar = data.avatar;
-             const notifBody = "Ada pesan baru di Hud-Hud";
+             const notifBody = data.lastMessage || "Ada pesan baru";
              const shouldNotify = data.type === 'group' ? appSettings.notifGroup : appSettings.notifMessage;
 
-             if (shouldNotify) {
-                // Notifikasi Bubble dihapus.
-                
-                // Gunakan Notifikasi Sistem (Browser Native) sebagai fallback/foreground notif
-                // Ini akan muncul di action center / status bar
-                if (appSettings.notifDesktop) {
-                   sendSystemNotification(
-                     `Hud-Hud: ${displaySender}`, 
-                     notifBody, 
-                     displayAvatar
-                   );
-                }
+             if (shouldNotify && appSettings.notifDesktop) {
+                // Munculkan notifikasi sistem (Status bar)
+                sendSystemNotification(
+                  displaySender, 
+                  notifBody, 
+                  displayAvatar
+                );
              }
           }
         }
@@ -267,7 +284,34 @@ export const Layout: React.FC = () => {
   return (
     <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900" dir={isRtl ? 'rtl' : 'ltr'}>
       
-      {/* NOTIFICATION BUBBLE REMOVED */}
+      {/* BANNER IZIN NOTIFIKASI */}
+      {showPermissionBanner && (
+        <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md">
+           <div className="flex items-center gap-3">
+             <div className="p-2 bg-white/20 rounded-full">
+               <Bell size={18} className="text-white animate-pulse" />
+             </div>
+             <div className="text-sm">
+               <p className="font-bold">Aktifkan Notifikasi?</p>
+               <p className="text-xs text-denim-100">Dapatkan pesan masuk saat aplikasi tertutup.</p>
+             </div>
+           </div>
+           <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowPermissionBanner(false)}
+                className="px-3 py-1.5 text-xs text-denim-100 hover:bg-white/10 rounded-lg"
+              >
+                Nanti
+              </button>
+              <button 
+                onClick={handleEnableNotifications}
+                className="px-3 py-1.5 text-xs bg-white text-denim-700 font-bold rounded-lg hover:bg-cream-100 shadow-sm"
+              >
+                Aktifkan
+              </button>
+           </div>
+        </div>
+      )}
 
       {/* Sidebar Panel Container */}
       <div className={`relative flex-col border-e border-cream-200 bg-cream-100 transition-all duration-300 ease-in-out z-20 ${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[380px] lg:w-[420px]`}>
