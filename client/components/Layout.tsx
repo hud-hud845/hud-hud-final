@@ -9,10 +9,11 @@ import { useAuth } from '../context/AuthContext';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { translations } from '../utils/translations';
-// Pastikan path ini sesuai dengan file yang sudah dibuat
 import { cleanupExpiredMessages } from '../services/cleanup';
-import { NotificationBubble } from './NotificationBubble';
+// NotificationBubble dihilangkan
 import { requestNotificationPermission, sendSystemNotification } from '../utils/notificationHelper';
+// Import helper FCM baru
+import { requestFcmToken, onMessageListener } from '../utils/fcm';
 
 export interface AppSettings {
   wallpaper: string; 
@@ -32,12 +33,7 @@ export const Layout: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>('chats');
   
-  // State Notifikasi
-  const [activeNotification, setActiveNotification] = useState<{
-    senderName: string;
-    avatar: string;
-    message: string;
-  } | null>(null);
+  // State Active Notification Bubble dihapus
 
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('hudhud_settings');
@@ -48,7 +44,7 @@ export const Layout: React.FC = () => {
       notifMessage: true,
       notifGroup: true,
       notifDesktop: true,
-      soundEnabled: false, // Default mati sesuai request
+      soundEnabled: false,
       autoDownloadWifi: true,
       autoDownloadCellular: false
     };
@@ -60,17 +56,29 @@ export const Layout: React.FC = () => {
     requestNotificationPermission();
   }, []);
 
+  // --- INTEGRASI FCM TOKEN ---
   useEffect(() => {
     if (currentUser) {
+      // 1. Cleanup pesan lama
       cleanupExpiredMessages(currentUser.id);
+
+      // 2. Minta & Simpan Token FCM (Untuk notifikasi background)
+      requestFcmToken(currentUser.id);
     }
   }, [currentUser]);
 
-  // --- LOGIKA NOTIFIKASI UPDATE ---
+  // --- LISTENER PESAN FOREGROUND FCM ---
+  useEffect(() => {
+    onMessageListener().then((payload: any) => {
+      // Menangani pesan push saat aplikasi terbuka (opsional)
+    });
+  }, []);
+
+
+  // --- LOGIKA NOTIFIKASI IN-APP (FIRESTORE LISTENER) ---
   useEffect(() => {
     if (!currentUser) return;
 
-    // Listen ke koleksi chats
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', currentUser.id)
@@ -78,45 +86,30 @@ export const Layout: React.FC = () => {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
-        // Hanya trigger jika data TERMODIFIKASI (pesan baru masuk mengubah updatedAt/unreadCounts/lastMessage)
-        // 'added' biasanya load awal, kita skip agar tidak spam notif saat buka app
         if (change.type === 'modified') {
           const data = change.doc.data() as ChatPreview;
           const chatId = change.doc.id;
 
-          // 1. Cek Pesan Baru (Unread > 0)
           const myUnreadCount = data.unreadCounts?.[currentUser.id] || 0;
-          
-          // 2. Cek apakah chat sedang dibuka/aktif. Jika ya, jangan notif.
           const isChatOpen = selectedChat?.id === chatId;
           
-          // 3. Cek waktu (hindari notifikasi lama saat reconnect)
+          // Cek waktu agar tidak notif pesan lama saat refresh
           const updatedAtTime = data.updatedAt?.seconds ? data.updatedAt.seconds * 1000 : Date.now();
-          const isRecent = (Date.now() - updatedAtTime) < 10000; // 10 detik toleransi
+          const isRecent = (Date.now() - updatedAtTime) < 10000; 
 
           if (myUnreadCount > 0 && !isChatOpen && isRecent) {
              
-             // Setup Data Tampilan
-             let displaySender = data.name; // Default: Nama Grup atau Nama Kontak di DB
+             let displaySender = data.name; 
              let displayAvatar = data.avatar;
-             
-             // Isi Pesan yang diminta user
              const notifBody = "Ada pesan baru di Hud-Hud";
-
-             // Filter berdasarkan Settings
              const shouldNotify = data.type === 'group' ? appSettings.notifGroup : appSettings.notifMessage;
 
              if (shouldNotify) {
-                // A. Tampilkan Bubble Dalam Aplikasi
-                setActiveNotification({
-                  senderName: displaySender, 
-                  avatar: displayAvatar,
-                  message: notifBody
-                });
-
-                // B. Tampilkan Notifikasi Sistem (Status Bar / Desktop)
+                // Notifikasi Bubble dihapus.
+                
+                // Gunakan Notifikasi Sistem (Browser Native) sebagai fallback/foreground notif
+                // Ini akan muncul di action center / status bar
                 if (appSettings.notifDesktop) {
-                   // Kirim notif sistem walaupun aplikasi diminimize
                    sendSystemNotification(
                      `Hud-Hud: ${displaySender}`, 
                      notifBody, 
@@ -132,7 +125,7 @@ export const Layout: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser, selectedChat, appSettings]);
 
-  // ... (Sisa kode logika Layout sama seperti sebelumnya) ...
+  // ... (Sisa kode logika Layout sama persis) ...
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       if (selectedChat) {
@@ -274,15 +267,7 @@ export const Layout: React.FC = () => {
   return (
     <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900" dir={isRtl ? 'rtl' : 'ltr'}>
       
-      {/* NOTIFICATION BUBBLE (TOP LAYER) */}
-      {activeNotification && (
-        <NotificationBubble 
-          senderName={activeNotification.senderName}
-          avatar={activeNotification.avatar}
-          message={activeNotification.message}
-          onClose={() => setActiveNotification(null)}
-        />
-      )}
+      {/* NOTIFICATION BUBBLE REMOVED */}
 
       {/* Sidebar Panel Container */}
       <div className={`relative flex-col border-e border-cream-200 bg-cream-100 transition-all duration-300 ease-in-out z-20 ${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[380px] lg:w-[420px]`}>

@@ -4,6 +4,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from "firebase/analytics";
+import { getMessaging } from "firebase/messaging";
 
 // KONFIGURASI FIREBASE (Hud-Hud Messenger)
 const firebaseConfig = {
@@ -19,13 +20,16 @@ const firebaseConfig = {
 // Inisialisasi Firebase App
 const app = initializeApp(firebaseConfig);
 
-// Inisialisasi Analytics
-// Note: Analytics hanya berjalan di lingkungan browser yang mendukung
-export const analytics = getAnalytics(app);
+// Inisialisasi Analytics (Hanya di browser)
+let analytics;
+if (typeof window !== 'undefined') {
+  analytics = getAnalytics(app);
+}
 
 // Ekspor service untuk digunakan di komponen lain
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 export default app;
