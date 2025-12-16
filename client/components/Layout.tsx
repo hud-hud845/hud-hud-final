@@ -9,24 +9,19 @@ import { useAuth } from '../context/AuthContext';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { translations } from '../utils/translations';
+// Pastikan path ini sesuai dengan file yang sudah dibuat
 import { cleanupExpiredMessages } from '../services/cleanup';
 import { NotificationBubble } from './NotificationBubble';
 import { requestNotificationPermission, sendSystemNotification } from '../utils/notificationHelper';
 
-// Interface untuk Pengaturan Aplikasi
 export interface AppSettings {
-  // Tampilan
   wallpaper: string; 
   fontSize: 'small' | 'normal' | 'large';
   language: 'id' | 'ar';
-  
-  // Notifikasi
   notifMessage: boolean;
   notifGroup: boolean;
   notifDesktop: boolean;
   soundEnabled: boolean;
-
-  // Penyimpanan
   autoDownloadWifi: boolean;
   autoDownloadCellular: boolean;
 }
@@ -44,7 +39,6 @@ export const Layout: React.FC = () => {
     message: string;
   } | null>(null);
 
-  // App Settings State (Persisted in LocalStorage)
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('hudhud_settings');
     return saved ? JSON.parse(saved) : {
@@ -54,33 +48,29 @@ export const Layout: React.FC = () => {
       notifMessage: true,
       notifGroup: true,
       notifDesktop: true,
-      soundEnabled: true, // Legacy setting, diabaikan di logic baru (always silent)
+      soundEnabled: false, // Default mati sesuai request
       autoDownloadWifi: true,
       autoDownloadCellular: false
     };
   });
 
-  // Global Admin Profile State
   const [adminProfile, setAdminProfile] = useState<User | null>(null);
 
-  // Minta Izin Notifikasi saat Layout dimuat
   useEffect(() => {
     requestNotificationPermission();
   }, []);
 
-  // AUTO-CLEANUP EFFECT
   useEffect(() => {
     if (currentUser) {
       cleanupExpiredMessages(currentUser.id);
     }
   }, [currentUser]);
 
-  // LOGIKA GLOBAL NOTIFICATION LISTENER
+  // --- LOGIKA NOTIFIKASI UPDATE ---
   useEffect(() => {
     if (!currentUser) return;
 
-    // Listen ke semua chat di mana user adalah peserta
-    // Gunakan 'updatedAt' agar kita hanya memproses yang baru berubah
+    // Listen ke koleksi chats
     const q = query(
       collection(db, 'chats'),
       where('participants', 'array-contains', currentUser.id)
@@ -88,65 +78,52 @@ export const Layout: React.FC = () => {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
-        // Hanya proses perubahan (MODIFIED), bukan load awal (ADDED)
+        // Hanya trigger jika data TERMODIFIKASI (pesan baru masuk mengubah updatedAt/unreadCounts/lastMessage)
+        // 'added' biasanya load awal, kita skip agar tidak spam notif saat buka app
         if (change.type === 'modified') {
           const data = change.doc.data() as ChatPreview;
-          
-          // 1. Cek apakah ada pesan belum dibaca untuk user ini
+          const chatId = change.doc.id;
+
+          // 1. Cek Pesan Baru (Unread > 0)
           const myUnreadCount = data.unreadCounts?.[currentUser.id] || 0;
           
-          // 2. Cek waktu update (harus baru saja, < 5 detik yang lalu) untuk menghindari notifikasi spam saat reconnect
+          // 2. Cek apakah chat sedang dibuka/aktif. Jika ya, jangan notif.
+          const isChatOpen = selectedChat?.id === chatId;
+          
+          // 3. Cek waktu (hindari notifikasi lama saat reconnect)
           const updatedAtTime = data.updatedAt?.seconds ? data.updatedAt.seconds * 1000 : Date.now();
-          const isRecent = (Date.now() - updatedAtTime) < 5000;
+          const isRecent = (Date.now() - updatedAtTime) < 10000; // 10 detik toleransi
 
-          // 3. Trigger Notifikasi jika:
-          // - Pesan baru (unread > 0)
-          // - Baru saja terjadi
-          // - Saya bukan yang sedang mengetik (opsional, tapi typing field berubah juga mentrigger modified)
-          // - lastMessage ada
-          if (myUnreadCount > 0 && isRecent && data.lastMessage) {
-            
-            // Tentukan Nama Pengirim & Avatar
-            let senderName = data.name; // Default nama chat (misal nama Grup)
-            let avatar = data.avatar;
+          if (myUnreadCount > 0 && !isChatOpen && isRecent) {
+             
+             // Setup Data Tampilan
+             let displaySender = data.name; // Default: Nama Grup atau Nama Kontak di DB
+             let displayAvatar = data.avatar;
+             
+             // Isi Pesan yang diminta user
+             const notifBody = "Ada pesan baru di Hud-Hud";
 
-            // Jika Direct Chat, kita coba ambil nama lawan bicara dari cache atau nama chat
-            if (data.type === 'direct') {
-               // Nama chat di Direct Chat biasanya sudah nama lawan bicara (diset saat create)
-               // Jika ingin lebih spesifik bisa lookup ke contactsMap, tapi data.name cukup aman
-               // Kecuali kita Admin, kita mungkin perlu logic khusus, tapi data.name sudah oke.
-            } else {
-               // Jika Grup, senderName = "Nama Grup"
-               // Pesan = "Ada pesan baru di Hud-Hud" (generic)
-            }
+             // Filter berdasarkan Settings
+             const shouldNotify = data.type === 'group' ? appSettings.notifGroup : appSettings.notifMessage;
 
-            // Pesan Notifikasi (Sesuai Request)
-            const notifTitle = "Hud-Hud";
-            const notifBody = `Ada pesan baru di Hud-Hud`;
-            
-            // --- A. IN-APP BUBBLE ---
-            if (appSettings.notifMessage) {
-               // Jika chat yang aktif SAMA dengan chat yang masuk pesan, JANGAN munculkan notifikasi
-               if (selectedChat?.id !== change.doc.id) {
-                  setActiveNotification({
-                    senderName: senderName, // Tampilkan Nama Pengirim/Grup
-                    avatar: avatar,
-                    message: notifBody
-                  });
-               }
-            }
+             if (shouldNotify) {
+                // A. Tampilkan Bubble Dalam Aplikasi
+                setActiveNotification({
+                  senderName: displaySender, 
+                  avatar: displayAvatar,
+                  message: notifBody
+                });
 
-            // --- B. SYSTEM NOTIFICATION (Background/Minimize) ---
-            if (appSettings.notifDesktop) {
-               // Cek visibility: Jika app hidden ATAU chat tidak sedang aktif
-               if (document.visibilityState === 'hidden' || selectedChat?.id !== change.doc.id) {
-                  sendSystemNotification(
-                    `${notifTitle}: ${senderName}`, // Title: "Hud-Hud: Nama Pengirim"
-                    notifBody, // Body: "Ada pesan baru..."
-                    avatar
-                  );
-               }
-            }
+                // B. Tampilkan Notifikasi Sistem (Status Bar / Desktop)
+                if (appSettings.notifDesktop) {
+                   // Kirim notif sistem walaupun aplikasi diminimize
+                   sendSystemNotification(
+                     `Hud-Hud: ${displaySender}`, 
+                     notifBody, 
+                     displayAvatar
+                   );
+                }
+             }
           }
         }
       });
@@ -155,8 +132,7 @@ export const Layout: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser, selectedChat, appSettings]);
 
-
-  // LOGIKA NAVIGASI BACK BUTTON (MOBILE)
+  // ... (Sisa kode logika Layout sama seperti sebelumnya) ...
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       if (selectedChat) {
@@ -169,7 +145,6 @@ export const Layout: React.FC = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [selectedChat, currentView]);
 
-  // Save settings when changed
   useEffect(() => {
     localStorage.setItem('hudhud_settings', JSON.stringify(appSettings));
   }, [appSettings]);
@@ -178,7 +153,6 @@ export const Layout: React.FC = () => {
     setAppSettings(prev => ({ ...prev, ...newSettings }));
   };
   
-  // Global Contacts Map for Name Resolution
   const [contactsMap, setContactsMap] = useState<Record<string, Contact>>({});
 
   useEffect(() => {
@@ -195,7 +169,6 @@ export const Layout: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Fetch Admin Profile
   useEffect(() => {
     const fetchAdminUid = async () => {
       const q = query(collection(db, 'users'), where('isAdmin', '==', true));
