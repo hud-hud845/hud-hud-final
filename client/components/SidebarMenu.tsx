@@ -1,13 +1,15 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, User, Users, Settings, 
-  HelpCircle, MessageSquare, LogOut, AlertTriangle, Radio, BadgeCheck
+  HelpCircle, MessageSquare, LogOut, AlertTriangle, Radio, BadgeCheck, Activity, Bell
 } from 'lucide-react';
 import { User as UserType, ViewState } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { translations } from '../utils/translations';
 import { AppSettings } from './Layout';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../services/firebase';
 
 interface SidebarMenuProps {
   isOpen: boolean;
@@ -28,20 +30,41 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
 }) => {
   const { logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const t = translations[appSettings.language];
 
-  // Menu items
+  // Fetch Unread Notifications Count
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    // Query notifikasi milik user yang belum dibaca (read == false)
+    const q = query(
+      collection(db, 'notifications'),
+      where('recipientId', '==', currentUser.id),
+      where('read', '==', false)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setUnreadNotifCount(snapshot.size);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // Menu items - Menambahkan Notifikasi di antara Kontak dan Pengaturan
   const menuItems = [
     { id: 'chats', icon: MessageSquare, label: t.nav.chats },
+    { id: 'status', icon: Activity, label: t.nav.status },
     { id: 'groups', icon: Users, label: t.nav.groups },
     { id: 'contacts', icon: User, label: t.nav.contacts },
+    { id: 'notifications', icon: Bell, label: t.nav.notifications, badge: unreadNotifCount }, // Badge Count here
     { id: 'settings', icon: Settings, label: t.nav.settings },
     { id: 'help', icon: HelpCircle, label: t.nav.help },
   ];
 
   // Jika admin, tambahkan menu Broadcast
   if (currentUser.isAdmin) {
-    menuItems.splice(1, 0, { id: 'broadcast', icon: Radio, label: t.nav.broadcast });
+    menuItems.splice(2, 0, { id: 'broadcast', icon: Radio, label: t.nav.broadcast, badge: 0 });
   }
 
   const handleNavigation = (viewId: string) => {
@@ -134,10 +157,18 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
                   ${isActive ? 'bg-denim-100 text-denim-700' : 'text-denim-800 hover:bg-cream-100 hover:text-denim-700'}
                 `}
               >
-                <item.icon 
-                  size={22} 
-                  className={`transition-colors ${isActive ? 'text-denim-600' : 'text-denim-500 group-hover:text-denim-600'}`} 
-                />
+                <div className="relative">
+                  <item.icon 
+                    size={22} 
+                    className={`transition-colors ${isActive ? 'text-denim-600' : 'text-denim-500 group-hover:text-denim-600'}`} 
+                  />
+                  {/* Notification Badge */}
+                  {item.badge !== undefined && item.badge > 0 ? (
+                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 border-cream-50 shadow-sm animate-pulse">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  ) : null}
+                </div>
                 <span className="font-medium text-[15px]">{item.label}</span>
                 {isActive && (
                   <div className="absolute left-0 top-0 bottom-0 w-1 bg-denim-600 rounded-e-full rtl:right-0 rtl:left-auto"></div>
@@ -158,7 +189,7 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
           </button>
           
           <div className="text-center text-xs text-denim-400 mt-2">
-            <p>Hud-Hud Web v1.0.2</p>
+            <p>Hud-Hud Web v1.2.0</p>
           </div>
         </div>
       </div>

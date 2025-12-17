@@ -1,5 +1,5 @@
 
-import { collectionGroup, query, where, getDocs, writeBatch, Timestamp } from 'firebase/firestore';
+import { collectionGroup, collection, query, where, getDocs, writeBatch, Timestamp, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
 const EXPIRATION_HOURS = 48;
@@ -49,3 +49,76 @@ export const cleanupExpiredMessages = async (currentUserId: string) => {
     console.warn("[AutoCleanup] Cleanup skipped or failed (check permissions).");
   }
 };
+
+/**
+ * Menghapus Status yang sudah expired (lewat dari field expiresAt).
+ * Dijalankan saat aplikasi dimuat.
+ */
+export const cleanupExpiredStatuses = async () => {
+    try {
+        const now = Timestamp.now();
+        // Query status yang expiresAt-nya kurang dari sekarang
+        const q = query(
+            collection(db, 'statuses'),
+            where('expiresAt', '<', now)
+        );
+
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) return;
+
+        const chunks = [];
+        const docs = snapshot.docs;
+
+        for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+            chunks.push(docs.slice(i, i + BATCH_LIMIT));
+        }
+
+        for (const chunk of chunks) {
+            const batch = writeBatch(db);
+            chunk.forEach((doc) => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+        }
+        console.log(`[AutoCleanup] Removed ${snapshot.size} expired statuses.`);
+
+    } catch (error) {
+        console.warn("[AutoCleanup] Status cleanup failed.", error);
+    }
+}
+
+/**
+ * Menghapus Notifikasi yang sudah expired (lewat dari field expiresAt).
+ */
+export const cleanupExpiredNotifications = async () => {
+    try {
+        const now = Timestamp.now();
+        // Query notifikasi yang expiresAt-nya kurang dari sekarang
+        const q = query(
+            collection(db, 'notifications'),
+            where('expiresAt', '<', now)
+        );
+
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) return;
+
+        const chunks = [];
+        const docs = snapshot.docs;
+
+        for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+            chunks.push(docs.slice(i, i + BATCH_LIMIT));
+        }
+
+        for (const chunk of chunks) {
+            const batch = writeBatch(db);
+            chunk.forEach((doc) => {
+                batch.delete(doc.ref);
+            });
+            await batch.commit();
+        }
+        console.log(`[AutoCleanup] Removed ${snapshot.size} expired notifications.`);
+
+    } catch (error) {
+        console.warn("[AutoCleanup] Notification cleanup failed.", error);
+    }
+}

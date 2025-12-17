@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { translations } from '../utils/translations';
-import { cleanupExpiredMessages } from '../services/cleanup';
+import { cleanupExpiredMessages, cleanupExpiredStatuses, cleanupExpiredNotifications } from '../services/cleanup';
 // Helper notifikasi sistem & FCM
 import { sendSystemNotification } from '../utils/notificationHelper';
 import { requestFcmToken, onMessageListener } from '../utils/fcm';
@@ -33,6 +33,9 @@ export const Layout: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>('chats');
   const [showPermissionBanner, setShowPermissionBanner] = useState(false);
+  
+  // State untuk melompat ke status tertentu dari notifikasi
+  const [targetStatusId, setTargetStatusId] = useState<string | null>(null);
 
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('hudhud_settings');
@@ -63,7 +66,6 @@ export const Layout: React.FC = () => {
   }, []);
 
   // Fungsi yang dipanggil saat tombol di banner diklik
-  // PERBAIKAN: Langsung hilangkan banner agar UI tidak macet/freeze
   const handleEnableNotifications = () => {
     // 1. UI Feedback Instant: Hilangkan banner segera
     setShowPermissionBanner(false);
@@ -75,7 +77,6 @@ export const Layout: React.FC = () => {
           const token = await requestFcmToken(currentUser.id);
           if (token) {
             console.log("Notifikasi berhasil diaktifkan.");
-            // Opsional: Bunyikan suara ting atau toast kecil jika perlu
           }
         } catch (error) {
           console.error("Gagal mengaktifkan notifikasi:", error);
@@ -84,12 +85,18 @@ export const Layout: React.FC = () => {
     }, 100); 
   };
 
-  // --- INTEGRASI FCM TOKEN SAAT LOGIN (Jika sudah diizinkan sebelumnya) ---
+  // --- INTEGRASI FCM TOKEN SAAT LOGIN & CLEANUP ---
   useEffect(() => {
-    if (currentUser && Notification.permission === 'granted') {
-      cleanupExpiredMessages(currentUser.id);
-      // Refresh token di background tanpa mengganggu user
-      requestFcmToken(currentUser.id).catch(err => console.error("Token refresh error", err));
+    if (currentUser) {
+        // Cleanup pesan lama, status, dan notifikasi kadaluarsa
+        cleanupExpiredMessages(currentUser.id);
+        cleanupExpiredStatuses();
+        cleanupExpiredNotifications();
+        
+        if (Notification.permission === 'granted') {
+            // Refresh token di background tanpa mengganggu user
+            requestFcmToken(currentUser.id).catch(err => console.error("Token refresh error", err));
+        }
     }
   }, [currentUser]);
 
@@ -153,7 +160,6 @@ export const Layout: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser, selectedChat, appSettings]);
 
-  // ... (Sisa kode logika Layout sama persis) ...
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
       if (selectedChat) {
@@ -346,7 +352,19 @@ export const Layout: React.FC = () => {
             adminProfile={adminProfile} 
           />
         ) : (
-          renderSidebarView(currentView, handleBackToChats, handleStartChat, handleOpenGroupChat, appSettings, updateAppSettings)
+          renderSidebarView(
+            currentView, 
+            handleBackToChats, 
+            handleStartChat, 
+            handleOpenGroupChat, 
+            appSettings, 
+            updateAppSettings,
+            contactsMap,
+            adminProfile,
+            handleMenuNavigation,
+            setTargetStatusId, // Setter untuk target ID
+            targetStatusId     // Target ID untuk scroll
+          )
         )}
       </div>
 

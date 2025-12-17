@@ -61,6 +61,50 @@ export interface Message {
   readBy?: string[]; // Array of User IDs who have read this message
 }
 
+export interface Comment {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  text: string;
+  createdAt: any;
+  isAdmin?: boolean; // Untuk badge di komentar
+  replyTo?: {
+    userName: string;
+    text: string;
+  };
+}
+
+export interface Status {
+  id: string;
+  userId: string;
+  author: {
+    name: string;
+    avatar: string;
+    isAdmin?: boolean; // Menyimpan status admin saat pembuatan
+  };
+  content?: string;
+  imageUrl?: string;
+  likes: string[]; // Array of UserIDs
+  commentsCount: number;
+  createdAt: any;
+  expiresAt: any; // 2x24 jam
+}
+
+export interface Notification {
+  id: string;
+  recipientId: string; // Pemilik Status atau Pemilik Komentar yg dibalas
+  senderId: string;    // Orang yang like/komen/reply
+  senderName: string;
+  senderAvatar: string;
+  type: 'like' | 'comment' | 'reply'; // Added 'reply' type
+  statusId: string;    // ID Status terkait
+  previewText?: string; // Isi komentar (opsional)
+  createdAt: any;
+  read: boolean;
+  expiresAt: any;
+}
+
 export interface ChatPreview {
   id: string;
   type: 'direct' | 'group';
@@ -79,4 +123,4 @@ export interface ChatPreview {
   typing?: Record<string, any>; // Map userId -> Timestamp (Last typed time)
 }
 
-export type ViewState = 'chats' | 'groups' | 'contacts' | 'settings' | 'help' | 'profile' | 'broadcast';
+export type ViewState = 'chats' | 'status' | 'my_status' | 'groups' | 'contacts' | 'notifications' | 'settings' | 'help' | 'profile' | 'broadcast';

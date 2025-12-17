@@ -3,8 +3,10 @@ export const translations = {
   id: {
     nav: {
       chats: "Obrolan",
+      status: "Status",
       groups: "Grup Saya",
       contacts: "Kontak",
+      notifications: "Pemberitahuan",
       settings: "Pengaturan",
       help: "Bantuan",
       broadcast: "Siaran Pesan",
@@ -63,6 +65,27 @@ export const translations = {
         contact: "Kontak"
       },
       admin: "Admin"
+    },
+    status: {
+      title: "Status",
+      myStatus: "Status Saya",
+      create: "Buat Status",
+      placeholder: "Apa yang Anda pikirkan?",
+      addPhoto: "Tambah Foto",
+      post: "Posting",
+      success: "Status berhasil dibuat",
+      deleteConfirm: "Hapus status ini?",
+      noStatus: "Belum ada status terbaru.",
+      like: "Suka",
+      comment: "Komentar",
+      writeComment: "Tulis komentar..."
+    },
+    notifications: {
+      title: "Pemberitahuan",
+      empty: "Belum ada pemberitahuan baru.",
+      liked: "menyukai status Anda.",
+      commented: "mengomentari status Anda:",
+      new: "Baru"
     },
     profile: {
       title: "Profil Saya",
@@ -182,8 +205,10 @@ export const translations = {
   ar: {
     nav: {
       chats: "المحادثات",
+      status: "الحالة",
       groups: "مجموعاتي",
       contacts: "جهات الاتصال",
+      notifications: "إشعارات",
       settings: "الإعدادات",
       help: "المساعدة",
       broadcast: "بث رسالة",
@@ -242,6 +267,27 @@ export const translations = {
         contact: "جهة اتصال"
       },
       admin: "مشرف"
+    },
+    status: {
+      title: "الحالة",
+      myStatus: "حالتي",
+      create: "إنشاء حالة",
+      placeholder: "بماذا تفكر؟",
+      addPhoto: "إضافة صورة",
+      post: "نشر",
+      success: "تم إنشاء الحالة بنجاح",
+      deleteConfirm: "حذف هذه الحالة؟",
+      noStatus: "لا توجد تحديثات للحالة.",
+      like: "إعجاب",
+      comment: "تعليق",
+      writeComment: "اكتب تعليقاً..."
+    },
+    notifications: {
+      title: "إشعارات",
+      empty: "لا توجد إشعارات جديدة.",
+      liked: "أعجب بحالتك.",
+      commented: "علق على حالتك:",
+      new: "جديد"
     },
     profile: {
       title: "ملفي الشخصي",
