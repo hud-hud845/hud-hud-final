@@ -17,7 +17,7 @@ import { Bell, X } from 'lucide-react';
 
 export interface AppSettings {
   wallpaper: string; 
-  fontSize: 'small' | 'normal' | 'large';
+  fontSize: 'xsmall' | 'small' | 'normal' | 'large' | 'xlarge';
   language: 'id' | 'ar';
   notifMessage: boolean;
   notifGroup: boolean;
