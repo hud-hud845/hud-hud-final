@@ -53,19 +53,23 @@ export const NotificationsView: React.FC<SidebarViewProps> = ({ onBack, appSetti
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
+    const safetyTimeout = setTimeout(() => { if (loading) setLoading(false); }, 5000);
     const q = query(collection(db, 'notifications'), where('recipientId', '==', currentUser.id), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      clearTimeout(safetyTimeout);
       const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Notification));
       setNotifications(notifs);
       setLoading(false);
       const unread = snapshot.docs.filter(d => !d.data().read);
       if (unread.length > 0) {
-        const batch = writeBatch(db);
-        unread.forEach(d => { batch.update(d.ref, { read: true }); });
-        batch.commit().catch(e => console.error("Batch update read failed", e));
+        setTimeout(() => {
+            const batch = writeBatch(db);
+            unread.forEach(d => { batch.update(d.ref, { read: true }); });
+            batch.commit().catch(e => console.error("Batch update read failed", e));
+        }, 1500);
       }
     }, (error) => { console.error("Error fetching notifications:", error); setLoading(false); });
-    return () => unsubscribe();
+    return () => { unsubscribe(); clearTimeout(safetyTimeout); };
   }, [currentUser]);
 
   const handleNotificationClick = (notif: Notification) => {
@@ -380,7 +384,7 @@ export const MyStatusView: React.FC<SidebarViewProps> = ({ onBack, appSettings, 
       </div>
       {showCreateModal && isEditingStatus && (<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-denim-900/60 backdrop-blur-sm animate-in fade-in duration-200"><div className="bg-white w-full sm:max-w-md h-[80%] sm:h-auto sm:max-h-[85vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-10 sm:zoom-in-95 duration-300"><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-white relative shrink-0"><h3 className="font-bold text-denim-900 text-lg w-full text-center">Edit Status</h3><button onClick={() => setShowCreateModal(false)} className="absolute right-4 p-2 bg-cream-100 rounded-full hover:bg-cream-200 text-denim-600 transition-colors"><X size={20} /></button></div><div className="p-4 flex-1 overflow-y-auto custom-scrollbar bg-white"><textarea value={statusText} onChange={(e) => setStatusText(e.target.value)} className="w-full min-h-[150px] text-lg placeholder-denim-300 border-none focus:ring-0 resize-none p-4 rounded-xl bg-cream-50 text-denim-900" autoFocus />{statusImagePreview && <img src={statusImagePreview} className="mt-4 w-full h-auto max-h-[300px] object-cover rounded-xl" />}</div><div className="p-4 border-t border-cream-200 bg-white"><button onClick={handleSubmitEdit} disabled={isPosting} className="w-full bg-denim-600 text-white py-3.5 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg hover:bg-denim-700 transition-all active:scale-[0.98]"> {isPosting && <Loader2 size={18} className="animate-spin" />} Simpan Perubahan </button></div></div></div>)}
       {activeCommentStatusId && (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setActiveCommentMenuId(null)}><div className="bg-white w-full sm:max-w-md h-[80%] sm:h-[600px] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}><div className="p-3 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-denim-900">Komentar Status Saya</h3><button onClick={() => setActiveCommentStatusId(null)}><X size={20} className="text-denim-400"/></button></div><div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">{comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}{comments.map(c => (<div key={c.id} className="flex gap-3 relative"><img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover bg-denim-100 shrink-0 border border-cream-200"/><div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group"><div className="flex justify-between items-start"><h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5><button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1"><MoreVertical size={14} /></button></div>{c.replyTo && (<div className="bg-cream-50 p-1.5 rounded-md border-l-2 border-denim-300 mb-1"><p className="text-[10px] font-bold text-denim-500">{c.replyTo.userName}</p><p className="text-[10px] text-denim-400 truncate">{c.replyTo.text}</p></div>)}<p className="text-sm text-denim-700 leading-snug">{c.text}</p>{activeCommentMenuId === c.id && (<div className="absolute right-0 top-6 bg-white shadow-lg border border-cream-200 rounded-lg z-10 py-1 w-24 animate-in zoom-in-95"><button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={12} /> Balas</button></div>)}</div></div>))}</div><div className="p-3 border-t border-cream-200 bg-white">{replyingTo && ( <div className="flex justify-between items-center bg-cream-50 p-2 rounded-lg mb-2 text-xs border border-cream-200"> <span className="text-denim-600 truncate">Balas <b>{replyingTo.name}</b>: "{replyingTo.text.substring(0, 15)}..."</span> <button onClick={() => setReplyingTo(null)}><X size={14} className="text-denim-400" /></button> </div> )}<form onSubmit={handleSendComment} className="flex gap-2 items-center"><input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Balas komentar..." className="flex-1 bg-cream-50 border border-cream-200 rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500" autoFocus={!!replyingTo}/><button disabled={!commentText.trim() || sendingComment} className="p-2 bg-denim-100 text-denim-600 rounded-full hover:bg-denim-200 disabled:opacity-50"><Send size={18} /></button></form></div></div></div>)}
-      {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Status?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-500/30">Ya, Hapus</button></div></div></div>)}
+      {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Status?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-500/30">Ya, Hapus</button></div></div></div>)}
       {zoomImage && (<div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-0 animate-in fade-in duration-300" onClick={() => setZoomImage(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/40 rounded-full hover:bg-black/60 transition-colors z-[101]"><X size={28} /></button><img src={zoomImage} className="max-w-full max-h-full object-contain pointer-events-none select-none animate-in zoom-in-95 duration-500" /></div>)}
     </div>
   );
@@ -408,27 +412,14 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
   const fileInputRef = useRef<HTMLInputElement>(null);
   const t = translations[appSettings?.language || 'id'];
 
-  // REAT-TIME LISTENER FOR GROUPS
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
-    // Kita gunakan onSnapshot agar setiap perubahan di Firestore langsung ditangkap tanpa refresh
-    const q = query(
-      collection(db, 'chats'), 
-      where('type', '==', 'group'), 
-      where('participants', 'array-contains', currentUser.id), 
-      orderBy('updatedAt', 'desc')
-    );
-
+    const q = query(collection(db, 'chats'), where('type', '==', 'group'), where('participants', 'array-contains', currentUser.id), orderBy('updatedAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedGroups = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatPreview));
-      setGroups(fetchedGroups);
+      setGroups(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatPreview)));
       setLoading(false);
-    }, (err) => { 
-      console.error("Group Listener Error:", err); 
-      setLoading(false); 
-    });
-
+    }, (err) => { console.error(err); setLoading(false); });
     return () => unsubscribe();
   }, [currentUser]);
 
@@ -446,19 +437,11 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
       if (groupImage) avatarUrl = await uploadImageToCloudinary(groupImage);
       const finalParticipants = Array.from(new Set([...selectedMembers, currentUser.id]));
       
-      const groupPayload = { 
-        name: groupName, 
-        description: groupDesc, 
-        avatar: avatarUrl, 
-        participants: finalParticipants, 
-        updatedAt: serverTimestamp() 
-      };
-
       if (isEditing && editGroupId) {
           const oldGroup = groups.find(g => g.id === editGroupId);
           const kickedUids = (oldGroup?.participants || []).filter(p => !finalParticipants.includes(p));
           
-          await updateDoc(doc(db, 'chats', editGroupId), groupPayload);
+          await updateDoc(doc(db, 'chats', editGroupId), { name: groupName, description: groupDesc, avatar: avatarUrl, participants: finalParticipants, updatedAt: serverTimestamp() });
           
           // Kirim pesan sistem jika ada yang dikeluarkan
           for (const uid of kickedUids) {
@@ -472,26 +455,10 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
             });
           }
       } else {
-        await addDoc(collection(db, 'chats'), { 
-            ...groupPayload,
-            type: 'group', 
-            adminIds: [currentUser.id], 
-            lastMessage: 'Grup baru', 
-            lastMessageType: 'text', 
-            unreadCounts: {}, 
-            createdAt: serverTimestamp(), 
-            typing: {} 
-        });
+        await addDoc(collection(db, 'chats'), { type: 'group', name: groupName, description: groupDesc, avatar: avatarUrl, participants: finalParticipants, adminIds: [currentUser.id], lastMessage: 'Grup baru', lastMessageType: 'text', unreadCounts: {}, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), typing: {} });
       }
-      
-      // UI FEEDBACK: Tutup modal segera setelah Firestore menerima instruksi
-      setShowModal(false); 
-      resetForm();
-    } catch (e) { 
-      alert("Gagal menyimpan grup."); 
-    } finally { 
-      setProcessing(false); 
-    }
+      setShowModal(false); resetForm();
+    } catch (e) { alert("Gagal menyimpan grup."); } finally { setProcessing(false); }
   };
 
   const handleSelectGroup = (id: string) => { const newSet = new Set(selectedGroupIds); if (newSet.has(id)) newSet.delete(id); else newSet.add(id); setSelectedGroupIds(newSet); };
@@ -509,25 +476,13 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
           if (isAdmin) {
              batch.delete(ref);
           } else {
-             // Member hanya keluar (hapus diri sendiri dari participants)
-             batch.update(ref, { 
-                 participants: arrayRemove(currentUser!.id),
-                 updatedAt: serverTimestamp() // Agar trigger listener sisi admin
-             });
+             batch.update(ref, { participants: arrayRemove(currentUser!.id) });
           }
         }
       });
       await batch.commit();
-      
-      // Reset state segera
-      setIsSelectionMode(false); 
-      setSelectedGroupIds(new Set()); 
-      setShowDeleteConfirm(false);
-    } catch (e) { 
-      alert("Gagal memproses."); 
-    } finally { 
-      setProcessing(false); 
-    }
+      setIsSelectionMode(false); setSelectedGroupIds(new Set()); setShowDeleteConfirm(false);
+    } catch (e) { alert("Gagal memproses."); } finally { setProcessing(false); }
   };
 
   const filteredGroups = groups.filter(g => g.name.toLowerCase().includes(search.toLowerCase()));

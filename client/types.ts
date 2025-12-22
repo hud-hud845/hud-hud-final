@@ -59,7 +59,6 @@ export interface Message {
 
   status: 'sent' | 'delivered' | 'read';
   readBy?: string[]; // Array of User IDs who have read this message
-  deletedBy?: string[]; // Array of User IDs who have deleted this message for themselves
 }
 
 export interface Comment {
