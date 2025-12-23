@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "809256298568",
+    "project_id": "hud-hud-mesenger",
+    "storage_bucket": "hud-hud-mesenger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:809256298568:android:1b877cbc5d830cac83907d",
+        "android_client_info": {
+          "package_name": "com.hudhud.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEE19ngySAN8fOQ8hRwBX8RvanCbYUqjM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

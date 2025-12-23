@@ -4,59 +4,67 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- FUNGSI BANTUAN (HELPER) ---
-    
-    // Cek apakah user sudah login
+    // --- FUNGSI BANTUAN ---
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Cek apakah user yang mengakses adalah pemilik data (berdasarkan UID)
     function isOwner(userId) {
       return request.auth.uid == userId;
     }
 
-    // --- ATURAN KOLEKSI ---
-
-    // 1. KOLEKSI USERS
+    // --- USERS COLLECTION ---
     match /users/{userId} {
-      // IZINKAN BACA (READ): 
-      // Wajib diizinkan untuk semua user yang sudah login (isSignedIn).
-      // Alasannya:
-      // a. Saat Register: Aplikasi perlu mengecek seluruh user untuk memastikan Nomor HP unik.
-      // b. Saat Chat: Aplikasi perlu mengambil foto & nama lawan bicara.
       allow read: if isSignedIn();
-      
-      // IZINKAN TULIS (CREATE/UPDATE):
-      // Hanya pemilik akun (isOwner) yang boleh membuat atau mengubah datanya sendiri.
-      // Ini mencegah orang lain mengedit profil Anda.
       allow create, update: if isSignedIn() && isOwner(userId);
       
-      // Sub-koleksi Contacts (Daftar Kontak User)
       match /contacts/{contactId} {
-        // Hanya pemilik akun yang boleh melihat dan mengedit kontaknya sendiri.
         allow read, write: if isSignedIn() && isOwner(userId);
       }
     }
 
-    // 2. KOLEKSI CHATS
+    // --- CHATS COLLECTION ---
     match /chats/{chatId} {
-      // Membuat Chat: Diizinkan jika UID pembuat ada di dalam daftar 'participants'
       allow create: if isSignedIn() && request.resource.data.participants.hasAny([request.auth.uid]);
-      
-      // Baca/Edit/Hapus Chat: Hanya diizinkan jika user adalah salah satu peserta chat tersebut
       allow read, update, delete: if isSignedIn() && (request.auth.uid in resource.data.participants);
 
-      // Sub-koleksi Messages (Pesan di dalam Chat)
       match /messages/{messageId} {
-        // Baca & Kirim Pesan:
-        // Diizinkan jika user terdaftar sebagai peserta di dokumen induk (Chat)
-        allow read, create: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow read: if isSignedIn() && (
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants ||
+          resource.data.senderId == request.auth.uid
+        );
         
-        // Hapus Pesan:
-        // Hanya pengirim pesan (senderId) yang boleh menghapus pesannya sendiri
+        allow create: if isSignedIn() && (
+          request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants ||
+          request.resource.data.senderId == request.auth.uid
+        );
+        
         allow delete: if isSignedIn() && (request.auth.uid == resource.data.senderId);
       }
+    }
+
+    // --- STATUSES COLLECTION ---
+    match /statuses/{statusId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn(); 
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // --- NOTIFICATIONS COLLECTION (PERBAIKAN UTAMA) ---
+    match /notifications/{notificationId} {
+      // Izinkan baca jika user adalah penerima notifikasi
+      allow read: if isSignedIn() && resource.data.recipientId == request.auth.uid;
+      
+      // Izinkan create jika user login (mengirim notif ke orang lain)
+      allow create: if isSignedIn();
+      
+      // Izinkan update (misal: tandai sudah dibaca) hanya oleh penerima
+      allow update: if isSignedIn() && resource.data.recipientId == request.auth.uid;
     }
   }
 }

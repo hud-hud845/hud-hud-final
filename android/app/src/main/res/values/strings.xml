@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Hud-Hud</string>
+    <string name="title_activity_main">Hud-Hud</string>
+    <string name="package_name">com.hudhud.app</string>
+    <string name="custom_url_scheme">com.hudhud.app</string>
+</resources>

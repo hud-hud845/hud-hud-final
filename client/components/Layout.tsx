@@ -10,7 +10,6 @@ import { collection, query, where, getDocs, addDoc, serverTimestamp, doc, getDoc
 import { db } from '../services/firebase';
 import { translations } from '../utils/translations';
 import { cleanupExpiredMessages, cleanupExpiredStatuses, cleanupExpiredNotifications } from '../services/cleanup';
-// Helper notifikasi sistem & FCM
 import { sendSystemNotification } from '../utils/notificationHelper';
 import { requestFcmToken, onMessageListener } from '../utils/fcm';
 import { Bell, X } from 'lucide-react';
@@ -33,144 +32,109 @@ export const Layout: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>('chats');
   const [showPermissionBanner, setShowPermissionBanner] = useState(false);
-  
-  // State untuk melompat ke status tertentu dari notifikasi
   const [targetStatusId, setTargetStatusId] = useState<string | null>(null);
+  const [adminProfile, setAdminProfile] = useState<User | null>(null);
+  const [contactsMap, setContactsMap] = useState<Record<string, Contact>>({});
 
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('hudhud_settings');
-    return saved ? JSON.parse(saved) : {
-      wallpaper: 'default',
-      fontSize: 'normal',
-      language: 'id',
-      notifMessage: true,
-      notifGroup: true,
-      notifDesktop: true,
-      soundEnabled: false,
-      autoDownloadWifi: true,
-      autoDownloadCellular: false
-    };
+    try {
+      const saved = localStorage.getItem('hudhud_settings');
+      return saved ? JSON.parse(saved) : {
+        wallpaper: 'default',
+        fontSize: 'normal',
+        language: 'id',
+        notifMessage: true,
+        notifGroup: true,
+        notifDesktop: true,
+        soundEnabled: false,
+        autoDownloadWifi: true,
+        autoDownloadCellular: false
+      };
+    } catch (e) {
+      return { wallpaper: 'default', fontSize: 'normal', language: 'id', notifMessage: true, notifGroup: true, notifDesktop: true, soundEnabled: false, autoDownloadWifi: true, autoDownloadCellular: false };
+    }
   });
 
-  const [adminProfile, setAdminProfile] = useState<User | null>(null);
-
-  // --- CEK IZIN NOTIFIKASI ---
+  // --- CEK IZIN NOTIFIKASI DENGAN DEFENSIVE CHECK (PENTING UNTUK ANDROID WEBVIEW) ---
   useEffect(() => {
-    // Cek jika browser mendukung notifikasi
-    if ('Notification' in window && 'serviceWorker' in navigator) {
-      // Tampilkan banner hanya jika izin masih 'default' (belum dipilih user)
-      if (Notification.permission === 'default') {
-        setShowPermissionBanner(true);
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator) {
+        if (Notification.permission === 'default') {
+          setShowPermissionBanner(true);
+        }
       }
+    } catch (e) {
+      console.warn("Notification API not supported in this environment");
     }
   }, []);
 
-  // Fungsi yang dipanggil saat tombol di banner diklik
-  const handleEnableNotifications = () => {
-    // 1. UI Feedback Instant: Hilangkan banner segera
+  const handleEnableNotifications = async () => {
     setShowPermissionBanner(false);
-
-    // 2. Jalankan proses request izin secara async agar tidak memblokir UI thread utama
-    setTimeout(async () => {
-      if (currentUser) {
-        try {
-          const token = await requestFcmToken(currentUser.id);
-          if (token) {
-            console.log("Notifikasi berhasil diaktifkan.");
-          }
-        } catch (error) {
-          console.error("Gagal mengaktifkan notifikasi:", error);
-        }
-      }
-    }, 100); 
+    if (!currentUser) return;
+    try {
+      const token = await requestFcmToken(currentUser.id);
+      if (token) console.log("FCM Active");
+    } catch (error) {
+      console.error("FCM activation error:", error);
+    }
   };
 
-  // --- INTEGRASI FCM TOKEN SAAT LOGIN & CLEANUP ---
   useEffect(() => {
     if (currentUser) {
-        // Cleanup pesan lama, status, dan notifikasi kadaluarsa
-        cleanupExpiredMessages(currentUser.id);
-        cleanupExpiredStatuses();
-        cleanupExpiredNotifications();
-        
-        if (Notification.permission === 'granted') {
-            // Refresh token di background tanpa mengganggu user
-            requestFcmToken(currentUser.id).catch(err => console.error("Token refresh error", err));
-        }
+      cleanupExpiredMessages(currentUser.id).catch(() => {});
+      cleanupExpiredStatuses().catch(() => {});
+      cleanupExpiredNotifications().catch(() => {});
+      
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        requestFcmToken(currentUser.id).catch(() => {});
+      }
     }
   }, [currentUser]);
 
-  // --- LISTENER PESAN FOREGROUND FCM (Saat aplikasi dibuka) ---
   useEffect(() => {
     onMessageListener().then((payload: any) => {
-      // Tangani notifikasi saat app sedang dibuka (Active)
       if (payload?.notification) {
-          const title = payload.notification.title || "Hud-Hud";
-          const body = payload.notification.body || "Pesan baru masuk";
-          
-          // Kirim notifikasi sistem meskipun aplikasi terbuka (sesuai request agar konsisten)
-          // Browser modern mungkin akan menumpuk ini di action center
-          sendSystemNotification(title, body, '/vite.svg');
+        sendSystemNotification(payload.notification.title || "Hud-Hud", payload.notification.body || "Pesan baru", '/vite.svg');
       }
-    });
+    }).catch(() => {});
   }, []);
 
-  // --- LOGIKA NOTIFIKASI IN-APP (FIRESTORE LISTENER) ---
-  // Digunakan sebagai fallback real-time saat aplikasi terbuka
+  // --- FIRESTORE REALTIME NOTIFICATIONS (FOREGROUND) ---
   useEffect(() => {
     if (!currentUser) return;
-
-    const q = query(
-      collection(db, 'chats'),
-      where('participants', 'array-contains', currentUser.id)
-    );
-
+    const q = query(collection(db, 'chats'), where('participants', 'array-contains', currentUser.id));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'modified') {
           const data = change.doc.data() as ChatPreview;
-          const chatId = change.doc.id;
-
           const myUnreadCount = data.unreadCounts?.[currentUser.id] || 0;
-          const isChatOpen = selectedChat?.id === chatId;
-          
-          // Cek waktu
+          const isChatOpen = selectedChat?.id === change.doc.id;
           const updatedAtTime = data.updatedAt?.seconds ? data.updatedAt.seconds * 1000 : Date.now();
-          const isRecent = (Date.now() - updatedAtTime) < 10000; 
+          const isRecent = (Date.now() - updatedAtTime) < 5000; 
 
           if (myUnreadCount > 0 && !isChatOpen && isRecent) {
-             let displaySender = data.name; 
-             let displayAvatar = data.avatar;
-             const notifBody = data.lastMessage || "Pesan baru diterima";
-             const shouldNotify = data.type === 'group' ? appSettings.notifGroup : appSettings.notifMessage;
-
-             if (shouldNotify && appSettings.notifDesktop) {
-                // Notifikasi Sistem Lokal (Fallback jika FCM delay)
-                sendSystemNotification(
-                  `Hud-Hud: ${displaySender}`, 
-                  notifBody, 
-                  displayAvatar
-                );
-             }
+            const shouldNotify = data.type === 'group' ? appSettings.notifGroup : appSettings.notifMessage;
+            if (shouldNotify && appSettings.notifDesktop) {
+              sendSystemNotification(`Hud-Hud: ${data.name}`, data.lastMessage || "Pesan baru", data.avatar);
+            }
           }
         }
       });
-    });
-
+    }, (err) => console.error("Snapshot error:", err));
     return () => unsubscribe();
   }, [currentUser, selectedChat, appSettings]);
 
-  useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      if (selectedChat) {
-        setSelectedChat(undefined);
-      } else if (currentView !== 'chats') {
-        setCurrentView('chats');
-      } 
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [selectedChat, currentView]);
+  // --- MANAJEMEN NAVIGASI ANDROID (Hapus pushState karena sering bikin blank di WebView) ---
+  // Kita gunakan state internal saja untuk stabilitas di Android Studio
+  const handleMenuNavigation = (view: ViewState) => {
+    setCurrentView(view);
+    setIsMenuOpen(false);
+  };
+
+  const handleBackToChats = () => {
+    setSelectedChat(undefined);
+    setCurrentView('chats');
+  };
 
   useEffect(() => {
     localStorage.setItem('hudhud_settings', JSON.stringify(appSettings));
@@ -180,215 +144,99 @@ export const Layout: React.FC = () => {
     setAppSettings(prev => ({ ...prev, ...newSettings }));
   };
   
-  const [contactsMap, setContactsMap] = useState<Record<string, Contact>>({});
-
   useEffect(() => {
     if (!currentUser) return;
-    const contactsRef = collection(db, 'users', currentUser.id, 'contacts');
-    const unsubscribe = onSnapshot(contactsRef, (snapshot) => {
+    const unsubscribe = onSnapshot(collection(db, 'users', currentUser.id, 'contacts'), (snapshot) => {
       const map: Record<string, Contact> = {};
-      snapshot.docs.forEach(doc => {
-        const data = doc.data() as Contact;
-        map[data.uid] = data; 
-      });
+      snapshot.docs.forEach(doc => { const data = doc.data() as Contact; map[data.uid] = data; });
       setContactsMap(map);
     });
     return () => unsubscribe();
   }, [currentUser]);
 
   useEffect(() => {
-    const fetchAdminUid = async () => {
-      const q = query(collection(db, 'users'), where('isAdmin', '==', true));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const adminId = snap.docs[0].id;
-        const unsubAdmin = onSnapshot(doc(db, 'users', adminId), (docSnap) => {
-          if (docSnap.exists()) {
-            setAdminProfile({ id: docSnap.id, ...docSnap.data() } as User);
-          }
-        });
-        return unsubAdmin;
-      }
+    const fetchAdmin = async () => {
+      try {
+        const q = query(collection(db, 'users'), where('isAdmin', '==', true));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const adminId = snap.docs[0].id;
+          onSnapshot(doc(db, 'users', adminId), (docSnap) => {
+            if (docSnap.exists()) setAdminProfile({ id: docSnap.id, ...docSnap.data() } as User);
+          });
+        }
+      } catch (e) {}
     };
-    let unsubscribe: (() => void) | undefined;
-    fetchAdminUid().then(unsub => { unsubscribe = unsub; });
-    return () => { if (unsubscribe) unsubscribe(); };
+    fetchAdmin();
   }, []);
 
-  const t = translations[appSettings.language];
+  if (!currentUser) return null;
 
+  const t = translations[appSettings.language];
   const getDisplayName = (targetUid: string, fallbackName?: string, fallbackPhone?: string) => {
     if (targetUid === currentUser?.id) return t.common.you;
     if (adminProfile && targetUid === adminProfile.id) return adminProfile.name;
     const contact = contactsMap[targetUid];
-    if (contact) return contact.savedName;
-    if (fallbackPhone) return fallbackPhone;
-    return fallbackName || 'Pengguna';
+    return contact ? contact.savedName : (fallbackPhone || fallbackName || 'Pengguna');
   };
 
-  if (!currentUser) return null;
-
-  const handleMenuNavigation = (view: ViewState) => {
-    if (view !== 'chats') window.history.pushState({ view: view }, '', '');
-    setCurrentView(view);
-  };
-
-  const handleBackToChats = () => {
-    if (window.history.state) window.history.back();
-    else { setSelectedChat(undefined); setCurrentView('chats'); }
-  };
-
-  const markChatAsRead = async (chat: ChatPreview) => {
-    if (!chat || !currentUser) return;
-    if (chat.unreadCounts && chat.unreadCounts[currentUser.id] > 0) {
-      const chatRef = doc(db, 'chats', chat.id);
-      try { await updateDoc(chatRef, { [`unreadCounts.${currentUser.id}`]: 0 }); } catch (err) { console.error("Gagal update status baca:", err); }
-    }
-  };
-
-  const handleSelectChat = (chat: ChatPreview) => {
-    window.history.pushState({ chat: chat.id }, '', '');
+  const handleSelectChat = async (chat: ChatPreview) => {
     setSelectedChat(chat);
-    markChatAsRead(chat);
-  };
-
-  const handleOpenGroupChat = (chat: ChatPreview) => {
-    handleSelectChat(chat);
-    setCurrentView('chats'); 
+    if (chat.unreadCounts?.[currentUser.id] > 0) {
+      try { await updateDoc(doc(db, 'chats', chat.id), { [`unreadCounts.${currentUser.id}`]: 0 }); } catch (e) {}
+    }
   };
 
   const handleStartChat = async (contactUid: string) => {
     if (!currentUser) return;
     try {
-      const chatsRef = collection(db, 'chats');
-      const q = query(chatsRef, where('type', '==', 'direct'), where('participants', 'array-contains', currentUser.id));
+      const q = query(collection(db, 'chats'), where('type', '==', 'direct'), where('participants', 'array-contains', currentUser.id));
       const snapshot = await getDocs(q);
-      let existingChat: ChatPreview | undefined;
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.participants.includes(contactUid)) {
-          existingChat = { id: doc.id, ...data, updatedAt: data.updatedAt?.toDate() || new Date() } as ChatPreview;
-        }
-      });
+      let existing: ChatPreview | undefined;
+      snapshot.forEach(doc => { if (doc.data().participants.includes(contactUid)) existing = { id: doc.id, ...doc.data() } as ChatPreview; });
 
-      if (existingChat) {
-        handleSelectChat(existingChat);
+      if (existing) {
+        handleSelectChat(existing);
       } else {
         const contactDoc = await getDoc(doc(db, 'users', contactUid));
-        const contactData = contactDoc.data();
-        const newChatData = {
-          type: 'direct',
-          participants: [currentUser.id, contactUid],
-          name: contactData?.name || 'Pengguna',
-          avatar: contactData?.avatar || '',
-          lastMessage: t.common.typing,
-          lastMessageType: 'text',
-          unreadCounts: { [currentUser.id]: 0, [contactUid]: 0 },
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          typing: {} 
+        const newChat = {
+          type: 'direct', participants: [currentUser.id, contactUid], name: contactDoc.data()?.name || 'User',
+          avatar: contactDoc.data()?.avatar || '', lastMessage: 'Chat baru', lastMessageType: 'text',
+          unreadCounts: { [currentUser.id]: 0, [contactUid]: 0 }, updatedAt: serverTimestamp(), createdAt: serverTimestamp(), typing: {}
         };
-        const docRef = await addDoc(collection(db, 'chats'), newChatData);
-        handleSelectChat({ id: docRef.id, ...newChatData, updatedAt: new Date() } as ChatPreview);
+        const ref = await addDoc(collection(db, 'chats'), newChat);
+        handleSelectChat({ id: ref.id, ...newChat } as ChatPreview);
       }
       setCurrentView('chats');
-      setIsMenuOpen(false);
-    } catch (error) { console.error("Gagal memulai chat:", error); alert("Terjadi kesalahan."); }
+    } catch (e) { alert("Error starting chat"); }
   };
 
-  const isRtl = appSettings.language === 'ar';
-
   return (
-    <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900" dir={isRtl ? 'rtl' : 'ltr'}>
-      
-      {/* BANNER IZIN NOTIFIKASI */}
+    <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900" dir={appSettings.language === 'ar' ? 'rtl' : 'ltr'}>
       {showPermissionBanner && (
-        <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md animate-in slide-in-from-top-full duration-300">
-           <div className="flex items-center gap-3">
-             <div className="p-2 bg-white/20 rounded-full">
-               <Bell size={18} className="text-white animate-pulse" />
-             </div>
-             <div className="text-sm">
-               <p className="font-bold">Aktifkan Notifikasi?</p>
-               <p className="text-xs text-denim-100">Agar pesan masuk tetap terlihat saat aplikasi ditutup.</p>
-             </div>
-           </div>
-           <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setShowPermissionBanner(false)}
-                className="px-3 py-1.5 text-xs text-denim-100 hover:bg-white/10 rounded-lg"
-              >
-                Nanti
-              </button>
-              <button 
-                onClick={handleEnableNotifications}
-                className="px-3 py-1.5 text-xs bg-white text-denim-700 font-bold rounded-lg hover:bg-cream-100 shadow-sm active:scale-95 transition-transform"
-              >
-                Izinkan
-              </button>
-           </div>
+        <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md">
+           <div className="flex items-center gap-3"><Bell size={18}/><div className="text-sm"><p className="font-bold">Aktifkan Notifikasi?</p><p className="text-xs">Klik izinkan untuk tetap terhubung.</p></div></div>
+           <div className="flex gap-2"><button onClick={() => setShowPermissionBanner(false)} className="px-3 py-1.5 text-xs">Nanti</button><button onClick={handleEnableNotifications} className="px-3 py-1.5 text-xs bg-white text-denim-700 font-bold rounded-lg">Izinkan</button></div>
         </div>
       )}
 
-      {/* Sidebar Panel Container */}
-      <div className={`relative flex-col border-e border-cream-200 bg-cream-100 transition-all duration-300 ease-in-out z-20 ${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[380px] lg:w-[420px]`}>
-        <SidebarMenu 
-          isOpen={isMenuOpen} 
-          onClose={() => setIsMenuOpen(false)} 
-          currentUser={currentUser} 
-          onNavigate={handleMenuNavigation} 
-          activeView={currentView} 
-          appSettings={appSettings} 
-        />
+      <div className={`relative flex-col border-e border-cream-200 bg-cream-100 ${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[380px] lg:w-[420px]`}>
+        <SidebarMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} currentUser={currentUser} onNavigate={handleMenuNavigation} activeView={currentView} appSettings={appSettings} />
         {currentView === 'chats' ? (
-          <ChatList 
-            activeChatId={selectedChat?.id} 
-            onSelectChat={handleSelectChat} 
-            onOpenMenu={() => setIsMenuOpen(true)} 
-            onStartChat={handleStartChat} 
-            contactsMap={contactsMap} 
-            getDisplayName={getDisplayName} 
-            appSettings={appSettings} 
-            adminProfile={adminProfile} 
-          />
+          <ChatList activeChatId={selectedChat?.id} onSelectChat={handleSelectChat} onOpenMenu={() => setIsMenuOpen(true)} onStartChat={handleStartChat} contactsMap={contactsMap} getDisplayName={getDisplayName} appSettings={appSettings} adminProfile={adminProfile} />
         ) : (
-          renderSidebarView(
-            currentView, 
-            handleBackToChats, 
-            handleStartChat, 
-            handleOpenGroupChat, 
-            appSettings, 
-            updateAppSettings,
-            contactsMap,
-            adminProfile,
-            handleMenuNavigation,
-            setTargetStatusId, // Setter untuk target ID
-            targetStatusId     // Target ID untuk scroll
-          )
+          renderSidebarView(currentView, handleBackToChats, handleStartChat, (c) => { handleSelectChat(c); setCurrentView('chats'); }, appSettings, updateAppSettings, contactsMap, adminProfile, handleMenuNavigation, setTargetStatusId, targetStatusId)
         )}
       </div>
 
-      {/* Main Content Area */}
       <div className={`flex-1 flex flex-col bg-cream-50 relative z-10 ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {selectedChat ? (
-          <ChatWindow 
-            chat={selectedChat} 
-            currentUser={currentUser} 
-            onBack={handleBackToChats} 
-            contactsMap={contactsMap} 
-            getDisplayName={getDisplayName} 
-            onStartChat={handleStartChat} 
-            appSettings={appSettings} 
-            adminProfile={adminProfile} 
-          />
+          <ChatWindow chat={selectedChat} currentUser={currentUser} onBack={handleBackToChats} contactsMap={contactsMap} getDisplayName={getDisplayName} onStartChat={handleStartChat} appSettings={appSettings} adminProfile={adminProfile} />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-denim-400 select-none p-4 text-center bg-cream-50 pattern-bg">
-            <div className="w-24 h-24 bg-cream-100 rounded-full flex items-center justify-center mb-6 animate-pulse shadow-xl shadow-denim-900/5 border border-cream-200">
-               <span className="text-4xl filter drop-shadow-sm">🕊️</span>
-            </div>
-            <h1 className="text-2xl font-bold text-denim-800 mb-2">{t.chatList.title}</h1>
-            <p className="max-w-xs text-sm text-denim-500">{t.chatList.selectChat}</p>
-            <div className="mt-8 px-4 py-1.5 bg-cream-100/80 backdrop-blur rounded-full text-[10px] font-medium text-denim-600 border border-cream-200 shadow-sm">Terenkripsi • Cepat • Aman</div>
+            <div className="w-24 h-24 bg-cream-100 rounded-full flex items-center justify-center mb-6 animate-pulse shadow-xl border border-cream-200"><span className="text-4xl">🕊️</span></div>
+            <h1 className="text-2xl font-bold text-denim-800 mb-2">Hud-Hud</h1>
+            <p className="text-sm text-denim-500">Pilih obrolan untuk memulai pesan</p>
           </div>
         )}
       </div>
