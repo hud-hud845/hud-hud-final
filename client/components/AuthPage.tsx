@@ -302,7 +302,7 @@ export const AuthPage: React.FC = () => {
       </div>
 
       <div className="mt-4 text-center text-denim-400 text-[10px] shrink-0">
-        <p>© 2024 Hud-Hud Web. Aman & Terpercaya.</p>
+        <p>© 1447 Hud-Hud Aplikation. Aman & Terpercaya.</p>
       </div>
     </div>
   );
