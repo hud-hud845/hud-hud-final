@@ -54,11 +54,16 @@ export const Layout: React.FC = () => {
 
   const [adminProfile, setAdminProfile] = useState<User | null>(null);
 
+  // Perbaikan Stabilitas untuk Mobile/Capacitor
   useEffect(() => {
-    if ('Notification' in window && 'serviceWorker' in navigator) {
-      if (Notification.permission === 'default') {
-        setShowPermissionBanner(true);
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          setShowPermissionBanner(true);
+        }
       }
+    } catch (e) {
+      console.warn("Notification API not supported in this environment");
     }
   }, []);
 
@@ -82,11 +87,12 @@ export const Layout: React.FC = () => {
         cleanupExpiredStatuses();
         cleanupExpiredNotifications(currentUser.id);
         
-        if (Notification.permission === 'granted') {
-            requestFcmToken(currentUser.id).catch(err => console.error(err));
-        }
+        try {
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+              requestFcmToken(currentUser.id).catch(err => console.error(err));
+          }
+        } catch (e) {}
 
-        // Global Unread Messages Count Listener
         const qChats = query(collection(db, 'chats'), where('participants', 'array-contains', currentUser.id));
         const unsubChats = onSnapshot(qChats, (snapshot) => {
           let total = 0;
@@ -119,7 +125,7 @@ export const Layout: React.FC = () => {
       if (payload?.notification) {
           sendSystemNotification(payload.notification.title || "Hud-Hud", payload.notification.body || "Pesan baru", '/vite.svg');
       }
-    });
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -147,10 +153,13 @@ export const Layout: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser, selectedChat, appSettings]);
 
+  // Safe PopState handling for Capacitor
   useEffect(() => {
     const handlePopState = () => {
-      if (selectedChat) setSelectedChat(undefined);
-      else if (currentView !== 'chats') setCurrentView('chats');
+      try {
+        if (selectedChat) setSelectedChat(undefined);
+        else if (currentView !== 'chats') setCurrentView('chats');
+      } catch (e) {}
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -204,18 +213,31 @@ export const Layout: React.FC = () => {
   if (!currentUser) return null;
 
   const handleMenuNavigation = (view: ViewState) => {
-    if (view !== 'chats') window.history.pushState({ view }, '', '');
+    try {
+      if (view !== 'chats' && window.history.pushState) {
+        window.history.pushState({ view }, '', '');
+      }
+    } catch (e) {}
     setCurrentView(view);
     setIsMenuOpen(false);
   };
 
   const handleBackToChats = () => {
-    if (window.history.state) window.history.back();
-    else { setSelectedChat(undefined); setCurrentView('chats'); }
+    try {
+      if (window.history.state) window.history.back();
+      else { setSelectedChat(undefined); setCurrentView('chats'); }
+    } catch (e) {
+      setSelectedChat(undefined);
+      setCurrentView('chats');
+    }
   };
 
   const handleSelectChat = async (chat: ChatPreview) => {
-    window.history.pushState({ chat: chat.id }, '', '');
+    try {
+      if (window.history.pushState) {
+        window.history.pushState({ chat: chat.id }, '', '');
+      }
+    } catch (e) {}
     setSelectedChat(chat);
     if (chat.unreadCounts && chat.unreadCounts[currentUser.id] > 0) {
       await updateDoc(doc(db, 'chats', chat.id), { [`unreadCounts.${currentUser.id}`]: 0 });
@@ -312,7 +334,7 @@ export const Layout: React.FC = () => {
         </nav>
       </div>
 
-      {/* Main Content Area - Expands to fill */}
+      {/* Main Content Area */}
       <div className={`flex-1 flex flex-col bg-cream-50 relative z-10 ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {selectedChat ? (
           <ChatWindow chat={selectedChat} currentUser={currentUser} onBack={handleBackToChats} contactsMap={contactsMap} getDisplayName={getDisplayName} onStartChat={handleStartChat} appSettings={appSettings} adminProfile={adminProfile} />

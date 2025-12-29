@@ -121,8 +121,8 @@ export const ChatList: React.FC<ChatListProps> = ({
   const executeDelete = async () => { setIsDeleting(true); try { const batch = writeBatch(db); selectedChatIds.forEach(id => batch.delete(doc(db, 'chats', id))); await batch.commit(); setIsSelectionMode(false); setSelectedChatIds(new Set()); setShowDeleteConfirm(false); } catch (e) { alert("Gagal."); } finally { setIsDeleting(false); } };
 
   return (
-    <div className="flex flex-col h-full bg-cream-50 w-full relative border-e border-cream-200/50 pb-20 md:pb-0">
-      <div className="px-4 pt-4 pb-2 bg-cream-100/95 backdrop-blur-sm sticky top-0 z-10 shadow-sm">
+    <div className="flex flex-col h-full bg-cream-50 w-full relative border-e border-cream-200/50 pb-[calc(20px+env(safe-area-inset-bottom))] md:pb-0">
+      <div className="px-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-2 bg-cream-100/95 backdrop-blur-sm sticky top-0 z-30 shadow-sm">
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-3">
             <button onClick={onOpenMenu} className="hidden md:block p-2 -ms-2 text-denim-600 hover:bg-cream-200 rounded-full transition-colors"><Menu size={24} /></button>
@@ -186,7 +186,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         )}
       </div>
 
-      {!isSelectionMode && (<button onClick={() => setShowNewChatModal(true)} className="absolute bottom-24 md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center z-20"><Plus size={28} /></button>)}
+      {!isSelectionMode && (<button onClick={() => setShowNewChatModal(true)} className="absolute bottom-[calc(96px+env(safe-area-inset-bottom))] md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center z-20"><Plus size={28} /></button>)}
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -205,7 +205,7 @@ export const ChatList: React.FC<ChatListProps> = ({
       )}
 
       {showNewChatModal && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm animate-in fade-in duration-200 pt-[env(safe-area-inset-top)]">
           <div className="bg-cream-50 w-full max-w-sm h-[80%] rounded-2xl shadow-2xl flex flex-col overflow-hidden relative">
             <div className="px-4 py-3 border-b border-cream-200 flex justify-between items-center bg-white shrink-0">
               <h3 className="font-bold text-denim-900">{t.chatList.newChat}</h3>
@@ -214,7 +214,7 @@ export const ChatList: React.FC<ChatListProps> = ({
             <div className="p-3 bg-white border-b border-cream-100">
                <div className="relative"><Search className="absolute start-3 top-1/2 -translate-y-1/2 text-denim-400" size={16} /><input type="text" placeholder={t.contacts.search} value={contactSearch} onChange={(e) => setContactSearch(e.target.value)} className="w-full bg-cream-50 ps-9 pe-4 py-2 rounded-lg text-sm focus:outline-none"/></div>
             </div>
-            <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-cream-50">
+            <div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-cream-50 pb-safe">
                {filteredContacts.length === 0 ? (<div className="text-center p-8 text-denim-400 text-sm">{contactSearch ? t.chatList.contactNotFound : t.contacts.newContact}</div>) : (
                  filteredContacts.map(contact => (
                    <div key={contact.id} onClick={() => { onStartChat(contact.uid); setShowNewChatModal(false); }} className="flex items-center gap-3 p-3 hover:bg-white rounded-xl cursor-pointer">
