@@ -29,7 +29,9 @@ export const translations = {
       delete: "Hapus",
       edit: "Ubah",
       back: "Kembali",
-      processing: "Memproses..."
+      processing: "Memproses...",
+      confirmExit: "Konfirmasi Keluar",
+      exitWarning: "Apakah Anda yakin ingin keluar dari aplikasi Hud-Hud untuk membuka link ini?"
     },
     chatList: {
       title: "Hud-Hud",
@@ -64,7 +66,9 @@ export const translations = {
         loc: "Lokasi",
         contact: "Kontak"
       },
-      admin: "Admin"
+      admin: "Admin",
+      openVideo: "Putar Video",
+      zoomVideo: "Perbesar Layar"
     },
     status: {
       title: "Status",
@@ -236,7 +240,9 @@ export const translations = {
       delete: "حذف",
       edit: "تعديل",
       back: "رجوع",
-      processing: "جار المعالجة..."
+      processing: "جار المعالجة...",
+      confirmExit: "تأكيد الخروج",
+      exitWarning: "هل أنت متأكد أنك تريد مغادرة تطبيق هدهد لفتح هذا الرابط؟"
     },
     chatList: {
       title: "هدهد",
@@ -271,7 +277,9 @@ export const translations = {
         loc: "موقع",
         contact: "جهة اتصال"
       },
-      admin: "مشرف"
+      admin: "مشرف",
+      openVideo: "تشغيل الفيديو",
+      zoomVideo: "تكبير الشاشة"
     },
     status: {
       title: "الحالة",

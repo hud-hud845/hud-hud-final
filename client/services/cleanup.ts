@@ -1,124 +1,59 @@
 
-import { collectionGroup, collection, query, where, getDocs, writeBatch, Timestamp, deleteDoc } from 'firebase/firestore';
-import { db } from './firebase';
-
-const EXPIRATION_HOURS = 48;
-const BATCH_LIMIT = 400; // Batas aman Firestore batch adalah 500
+import { ref, get, remove, query as rtdbQuery, orderByChild, endAt, update } from 'firebase/database';
+import { rtdb } from './firebase';
 
 /**
- * Menghapus pesan yang dikirim oleh user saat ini yang lebih tua dari 48 jam.
- * Dijalankan di background saat aplikasi dimuat.
- */
-export const cleanupExpiredMessages = async (currentUserId: string) => {
-  try {
-    // 1. Tentukan waktu batas (Sekarang - 48 Jam)
-    const cutoffDate = new Date(Date.now() - EXPIRATION_HOURS * 60 * 60 * 1000);
-    const cutoffTimestamp = Timestamp.fromDate(cutoffDate);
-
-    // 2. Query Collection Group 'messages'
-    // Filter: Pengirim adalah saya DAN waktu buat < waktu batas
-    const q = query(
-      collectionGroup(db, 'messages'),
-      where('senderId', '==', currentUserId),
-      where('createdAt', '<', cutoffTimestamp)
-    );
-
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) {
-      return;
-    }
-
-    // 3. Hapus menggunakan Batch (Chunking)
-    const chunks = [];
-    const docs = snapshot.docs;
-
-    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
-      chunks.push(docs.slice(i, i + BATCH_LIMIT));
-    }
-
-    for (const chunk of chunks) {
-      const batch = writeBatch(db);
-      chunk.forEach((doc) => {
-        batch.delete(doc.ref);
-      });
-      await batch.commit();
-    }
-
-  } catch (error) {
-    console.warn("[AutoCleanup] Cleanup skipped or failed (check permissions).");
-  }
-};
-
-/**
- * Menghapus Status yang sudah expired (lewat dari field expiresAt).
- * Dijalankan saat aplikasi dimuat.
+ * Menghapus Status yang sudah expired (lewat dari field expiresAt) di RTDB.
  */
 export const cleanupExpiredStatuses = async () => {
     try {
-        const now = Timestamp.now();
-        // Query status yang expiresAt-nya kurang dari sekarang
-        const q = query(
-            collection(db, 'statuses'),
-            where('expiresAt', '<', now)
-        );
-
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) return;
-
-        const chunks = [];
-        const docs = snapshot.docs;
-
-        for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
-            chunks.push(docs.slice(i, i + BATCH_LIMIT));
-        }
-
-        for (const chunk of chunks) {
-            const batch = writeBatch(db);
-            chunk.forEach((doc) => {
-                batch.delete(doc.ref);
+        const now = Date.now();
+        // Query status yang expiresAt-nya lebih kecil dari waktu sekarang
+        const statusesRef = rtdbQuery(ref(rtdb, 'statuses'), orderByChild('expiresAt'), endAt(now));
+        const snapshot = await get(statusesRef);
+        
+        if (snapshot.exists()) {
+            const updates: any = {};
+            snapshot.forEach((child) => {
+                // Hapus status dan komentar terkait
+                updates[`statuses/${child.key}`] = null;
+                updates[`comments/${child.key}`] = null;
             });
-            await batch.commit();
+            await update(ref(rtdb), updates);
+            console.log(`[AutoCleanup] Berhasil menghapus status yang kadaluwarsa.`);
         }
-        console.log(`[AutoCleanup] Removed ${snapshot.size} expired statuses.`);
-
     } catch (error) {
-        console.warn("[AutoCleanup] Status cleanup failed.", error);
+        console.warn("[AutoCleanup] Gagal membersihkan status:", error);
     }
-}
+};
 
 /**
- * Menghapus Notifikasi yang sudah expired (lewat dari field expiresAt).
+ * Menghapus Notifikasi yang sudah expired di RTDB untuk user tertentu.
+ * Dipanggil saat user login/load aplikasi.
  */
-export const cleanupExpiredNotifications = async () => {
+export const cleanupExpiredNotifications = async (userId: string) => {
+    if (!userId) return;
     try {
-        const now = Timestamp.now();
-        // Query notifikasi yang expiresAt-nya kurang dari sekarang
-        const q = query(
-            collection(db, 'notifications'),
-            where('expiresAt', '<', now)
-        );
-
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) return;
-
-        const chunks = [];
-        const docs = snapshot.docs;
-
-        for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
-            chunks.push(docs.slice(i, i + BATCH_LIMIT));
-        }
-
-        for (const chunk of chunks) {
-            const batch = writeBatch(db);
-            chunk.forEach((doc) => {
-                batch.delete(doc.ref);
+        const now = Date.now();
+        const notifRef = rtdbQuery(ref(rtdb, `notifications/${userId}`), orderByChild('expiresAt'), endAt(now));
+        const snapshot = await get(notifRef);
+        
+        if (snapshot.exists()) {
+            const updates: any = {};
+            snapshot.forEach((child) => {
+                updates[`notifications/${userId}/${child.key}`] = null;
             });
-            await batch.commit();
+            await update(ref(rtdb), updates);
+            console.log(`[AutoCleanup] Berhasil menghapus notifikasi kadaluwarsa milik user ${userId}.`);
         }
-        console.log(`[AutoCleanup] Removed ${snapshot.size} expired notifications.`);
-
     } catch (error) {
-        console.warn("[AutoCleanup] Notification cleanup failed.", error);
+        console.warn("[AutoCleanup] Gagal membersihkan notifikasi:", error);
     }
-}
+};
+
+/**
+ * Cleanup expired messages logic (optional, for RTDB efficiency)
+ */
+export const cleanupExpiredMessages = async (chatId: string) => {
+    // Implementasi jika ingin menghapus riwayat chat lama secara otomatis
+};

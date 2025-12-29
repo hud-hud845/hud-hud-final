@@ -4,6 +4,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from "firebase/analytics";
+import { getDatabase } from "firebase/database";
 // @ts-ignore
 import { getMessaging } from "firebase/messaging";
 
@@ -15,7 +16,8 @@ const firebaseConfig = {
   storageBucket: "hud-hud-mesenger.firebasestorage.app",
   messagingSenderId: "809256298568",
   appId: "1:809256298568:web:6f53b87a06ff661d83907d",
-  measurementId: "G-W6MBZC64V6"
+  measurementId: "G-W6MBZC64V6",
+  databaseURL: "https://hud-hud-mesenger-default-rtdb.firebaseio.com/"
 };
 
 // Inisialisasi Firebase App
@@ -30,6 +32,7 @@ if (typeof window !== 'undefined') {
 // Ekspor service untuk digunakan di komponen lain
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const rtdb = getDatabase(app);
 export const storage = getStorage(app);
 export const messaging = typeof window !== 'undefined' ? (() => {
   try {

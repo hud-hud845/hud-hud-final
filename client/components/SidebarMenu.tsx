@@ -8,8 +8,8 @@ import { User as UserType, ViewState } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { translations } from '../utils/translations';
 import { AppSettings } from './Layout';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { ref, onValue } from 'firebase/database';
+import { rtdb } from '../services/firebase';
 
 interface SidebarMenuProps {
   isOpen: boolean;
@@ -18,6 +18,7 @@ interface SidebarMenuProps {
   onNavigate: (view: ViewState) => void;
   activeView: ViewState;
   appSettings: AppSettings;
+  totalUnreadMessages?: number;
 }
 
 export const SidebarMenu: React.FC<SidebarMenuProps> = ({ 
@@ -26,43 +27,43 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
   currentUser, 
   onNavigate,
   activeView,
-  appSettings
+  appSettings,
+  totalUnreadMessages = 0
 }) => {
   const { logout } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const t = translations[appSettings.language];
 
-  // Fetch Unread Notifications Count
+  // Fetch Unread Notifications Count FROM RTDB
   useEffect(() => {
     if (!currentUser) return;
     
-    // Query notifikasi milik user yang belum dibaca (read == false)
-    const q = query(
-      collection(db, 'notifications'),
-      where('recipientId', '==', currentUser.id),
-      where('read', '==', false)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUnreadNotifCount(snapshot.size);
+    const notifRef = ref(rtdb, `notifications/${currentUser.id}`);
+    const unsubscribe = onValue(notifRef, (snapshot) => {
+      const val = snapshot.val();
+      if (val) {
+        const unread = Object.values(val).filter((n: any) => n.read === false).length;
+        setUnreadNotifCount(unread);
+      } else {
+        setUnreadNotifCount(0);
+      }
     });
 
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Menu items - Menambahkan Notifikasi di antara Kontak dan Pengaturan
+  // Menu items
   const menuItems = [
-    { id: 'chats', icon: MessageSquare, label: t.nav.chats },
+    { id: 'chats', icon: MessageSquare, label: t.nav.chats, badge: totalUnreadMessages },
     { id: 'status', icon: Activity, label: t.nav.status },
     { id: 'groups', icon: Users, label: t.nav.groups },
     { id: 'contacts', icon: User, label: t.nav.contacts },
-    { id: 'notifications', icon: Bell, label: t.nav.notifications, badge: unreadNotifCount }, // Badge Count here
+    { id: 'notifications', icon: Bell, label: t.nav.notifications, badge: unreadNotifCount },
     { id: 'settings', icon: Settings, label: t.nav.settings },
     { id: 'help', icon: HelpCircle, label: t.nav.help },
   ];
 
-  // Jika admin, tambahkan menu Broadcast
   if (currentUser.isAdmin) {
     menuItems.splice(2, 0, { id: 'broadcast', icon: Radio, label: t.nav.broadcast, badge: 0 });
   }
@@ -75,20 +76,6 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
   const handleProfileClick = () => {
     onNavigate('profile');
     onClose();
-  };
-
-  const handleLogoutClick = () => {
-    setShowLogoutConfirm(true);
-  };
-
-  const confirmLogout = async () => {
-    try {
-      await logout();
-      setShowLogoutConfirm(false);
-      onClose();
-    } catch (error) {
-      console.error("Gagal logout", error);
-    }
   };
 
   const isRtl = appSettings.language === 'ar';
@@ -113,7 +100,6 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
           ${isOpen ? 'translate-x-0' : (isRtl ? 'translate-x-full' : '-translate-x-full')}
         `}
       >
-        {/* Profile Header (Clickable) */}
         <div 
           className="p-6 bg-denim-700 relative cursor-pointer hover:bg-denim-800 transition-colors"
           onClick={handleProfileClick}
@@ -144,7 +130,6 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
           </div>
         </div>
 
-        {/* Menu Items */}
         <div className="flex-1 overflow-y-auto py-2 custom-scrollbar bg-cream-50">
           {menuItems.map((item) => {
             const isActive = activeView === item.id;
@@ -162,9 +147,8 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
                     size={22} 
                     className={`transition-colors ${isActive ? 'text-denim-600' : 'text-denim-500 group-hover:text-denim-600'}`} 
                   />
-                  {/* Notification Badge */}
                   {item.badge !== undefined && item.badge > 0 ? (
-                    <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 border-cream-50 shadow-sm animate-pulse">
+                    <span className={`absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-1.5 min-w-[18px] h-[18px] rounded-full flex items-center justify-center border-2 border-cream-50 shadow-sm`}>
                       {item.badge > 99 ? '99+' : item.badge}
                     </span>
                   ) : null}
@@ -178,10 +162,9 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
           })}
         </div>
 
-        {/* Footer & Logout */}
         <div className="p-4 border-t border-cream-200 bg-cream-50">
           <button 
-            onClick={handleLogoutClick}
+            onClick={() => setShowLogoutConfirm(true)}
             className="w-full flex items-center gap-4 px-4 py-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors group mb-2"
           >
             <LogOut size={22} className="group-hover:text-red-600 rtl:rotate-180" />
@@ -189,12 +172,11 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
           </button>
           
           <div className="text-center text-xs text-denim-400 mt-2">
-            <p>Hud-Hud Web v1.2.0</p>
+            <p>Hud-Hud Web v1.3.0</p>
           </div>
         </div>
       </div>
 
-      {/* Modal Konfirmasi Logout */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl scale-100 animate-in zoom-in-95 duration-200 border border-cream-200">
@@ -215,7 +197,7 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
                   {t.nav.cancel}
                 </button>
                 <button 
-                  onClick={confirmLogout}
+                  onClick={async () => { await logout(); setShowLogoutConfirm(false); onClose(); }}
                   className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white font-medium rounded-xl transition-colors shadow-lg shadow-red-500/30"
                 >
                   {t.nav.yesLogout}
