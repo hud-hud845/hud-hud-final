@@ -36,7 +36,7 @@ const ViewHeader: React.FC<{
   onBack: () => void; 
   rightAction?: React.ReactNode 
 }> = ({ title, onBack, rightAction }) => (
-  <div className="h-[60px] px-4 flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 text-denim-800 shrink-0">
+  <div className="h-[60px] px-4 pt-[calc(0rem+env(safe-area-inset-top))] flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 text-denim-800 shrink-0 box-content">
     <div className="flex items-center gap-4">
       <button onClick={onBack} className="p-2 -ms-2 text-denim-500 hover:bg-cream-200 rounded-full transition-colors"><ArrowLeft size={20} className="rtl:rotate-180" /></button>
       <h2 className="text-lg font-semibold text-denim-900">{title}</h2>
@@ -327,9 +327,8 @@ export const StatusView: React.FC<SidebarViewProps> = ({ onBack, appSettings, co
                </div>
            )}
         </div>
-        <button onClick={() => { setIsEditingStatus(null); setStatusText(''); setStatusImagePreview(null); setShowCreateModal(true); }} className="absolute bottom-24 md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-110 active:scale-90 z-20"><Plus size={32} /></button>
+        <button onClick={() => { setIsEditingStatus(null); setStatusText(''); setStatusImagePreview(null); setShowCreateModal(true); }} className="absolute bottom-24 md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center transition-all hover:scale-110 active:scale-90 z-20 pb-safe"><Plus size={32} /></button>
         
-        {/* SMALLER CENTERED STATUS MODAL */}
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-denim-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white w-full max-w-md max-h-[80vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
@@ -373,8 +372,8 @@ export const StatusView: React.FC<SidebarViewProps> = ({ onBack, appSettings, co
 
         {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Status?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg shadow-red-500/30">Ya, Hapus</button></div></div></div>)}
         {zoomImage && (<div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-0 animate-in fade-in duration-300" onClick={() => setZoomImage(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/40 rounded-full hover:bg-black/60 transition-colors z-[101]"><X size={28} /></button><img src={zoomImage} className="max-w-full max-h-full object-contain select-none animate-in zoom-in-95 duration-500" /></div>)}
-        {showInfoModal && infoUser && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl relative animate-in zoom-in-95 flex flex-col max-h-[80vh] overflow-hidden"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-10"><X size={20} /></button><div className="h-32 bg-denim-700 relative rounded-t-2xl shrink-0"><div className="absolute inset-0 opacity-10 pattern-bg"></div></div><div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-0 flex-1 overflow-y-auto custom-scrollbar"><img src={infoUser.avatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" /><h2 className="mt-3 text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">{infoUser.name}{(infoUser.isAdmin) && <BadgeCheck size={18} className="text-white fill-blue-500" />}</h2><p className="text-denim-500 text-sm font-medium mb-4 text-center">{infoUser.phoneNumber || '-'}</p>{contactsMap && !contactsMap[infoUser.id] && (!adminProfile || infoUser.id !== adminProfile.id) && (<div className="mb-4 w-full">{!isAddingContact ? (<button onClick={() => { setNewContactName(infoUser.name); setIsAddingContact(true); }} className="w-full py-3 bg-denim-600 hover:bg-denim-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md"><UserPlus size={16} /> Tambahkan Kontak</button>) : (<div className="bg-cream-100 p-4 rounded-2xl border border-denim-200 animate-in fade-in"><p className="text-[10px] text-denim-500 mb-2 font-bold uppercase tracking-wider">Simpan Sebagai:</p><input type="text" value={newContactName} onChange={(e) => setNewContactName(e.target.value)} className="w-full p-2.5 border border-cream-300 rounded-xl text-sm mb-3 focus:ring-1 focus:ring-denim-500 outline-none" placeholder="Nama Kontak" autoFocus /><div className="flex gap-2"><button onClick={() => setIsAddingContact(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-xl text-xs font-bold">Batal</button><button onClick={handleAddContact} className="flex-1 py-2 bg-green-500 text-white rounded-xl text-xs font-bold shadow-md shadow-green-500/20">Simpan</button></div></div>)}</div>)}<div className="w-full bg-cream-50 p-4 rounded-2xl border border-cream-200 text-center"><p className="text-sm text-denim-700 italic">"{infoUser.bio || '-'}"</p></div></div></div></div>)}
-        {activeCommentStatusId && (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setActiveCommentMenuId(null)}><div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 shrink-0"><h3 className="font-bold text-denim-900">{t.status.comment}</h3><button onClick={() => setActiveCommentStatusId(null)} className="p-1 bg-cream-200 rounded-full hover:bg-cream-300 transition-colors"><X size={20} className="text-denim-600"/></button></div><div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">{comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}{comments.map(c => (<div key={c.id} className="flex gap-3 relative"><img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/><div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group"><div className="flex justify-between items-start gap-4"><h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5><button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button></div>{c.replyTo && (<div className="bg-cream-50 p-2 rounded-xl border-l-2 border-denim-400 mb-1.5"><p className="text-[10px] font-bold text-denim-600">{c.replyTo.userName}</p><p className="text-[10px] text-denim-400 truncate italic">"{c.replyTo.text}"</p></div>)}<p className="text-sm text-denim-700 leading-snug">{c.text}</p>{activeCommentMenuId === c.id && (<div className="absolute right-0 top-7 bg-white shadow-xl border border-cream-200 rounded-xl z-30 py-1 w-28 animate-in zoom-in-95 origin-top-right overflow-hidden"><button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2.5 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={14} /> Balas</button></div>)}</div></div>))}</div><div className="p-4 border-t border-cream-200 bg-white shrink-0">{replyingTo && ( <div className="flex justify-between items-center bg-cream-100 p-2.5 rounded-xl mb-3 text-xs border border-denim-200 animate-in slide-in-from-bottom-2"> <span className="text-denim-600 truncate">Balas ke <b>{replyingTo.name}</b>: "{replyingTo.text.substring(0, 20)}..."</span> <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-white rounded-full"><X size={14} className="text-denim-400 hover:text-red-500" /></button> </div> )}<form onSubmit={handleSendComment} className="flex gap-2 items-center"><input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder={replyingTo ? `Tulis balasan...` : t.status.writeComment} className="flex-1 bg-cream-50 border border-cream-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 shadow-inner" autoFocus={!!replyingTo}/><button disabled={!commentText.trim() || sendingComment} className="p-3 bg-denim-600 text-white rounded-2xl hover:bg-denim-700 disabled:opacity-50 transition-all shadow-md active:scale-90"><Send size={20} /></button></form></div></div></div>)}
+        {showInfoModal && infoUser && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl relative animate-in zoom-in-95 flex flex-col max-h-[80vh] overflow-hidden"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-10"><X size={20} /></button><div className="h-32 bg-denim-700 relative rounded-t-2xl shrink-0"><div className="absolute inset-0 opacity-10 pattern-bg"></div></div><div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-0 flex-1 overflow-y-auto custom-scrollbar"><img src={infoUser.avatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" /><h2 className="mt-3 text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">{infoUser.name}{(infoUser.isAdmin) && <BadgeCheck size={18} className="text-white fill-blue-500" />}</h2><p className="text-denim-500 text-sm font-medium mb-4 text-center">{infoUser.phoneNumber || '-'}</p>{contactsMap && !contactsMap[infoUser.id] && (!adminProfile || infoUser.id !== adminProfile.id) && (<div className="mb-4 w-full">{!isAddingContact ? (<button onClick={() => { setNewContactName(infoUser.name); setIsAddingContact(true); }} className="w-full py-3 bg-denim-600 hover:bg-denim-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md"><UserPlus size={16} /> Tambahkan Kontak</button>) : (<div className="bg-cream-100 p-4 rounded-2xl border border-denim-200 animate-in fade-in"><p className="text-[10px] text-denim-500 mb-2 font-bold uppercase tracking-wider">Simpan Sebagai:</p><input type="text" value={newContactName} onChange={(e) => setNewContactName(e.target.value)} className="w-full p-2.5 border border-cream-300 rounded-xl text-sm mb-3 focus:ring-1 focus:ring-denim-500 outline-none" placeholder="Nama Kontak" autoFocus /><div className="flex gap-2"><button onClick={() => setIsAddingContact(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-xl text-xs font-bold">Batal</button><button onClick={handleAddContact} className="flex-1 py-2 bg-green-500 text-white rounded-xl text-xs font-bold shadow-md shadow-green-500/20">Simpan</button></div></div>)}</div>)}<div className="w-full bg-cream-50 p-4 rounded-2xl border border-cream-200 text-center"><p className="text-sm text-denim-700 italic">"{infoUser.bio || '-'}"</p></div></div></div></div>)}
+        {activeCommentStatusId && (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setActiveCommentMenuId(null)}><div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 shrink-0"><h3 className="font-bold text-denim-900">{t.status.comment}</h3><button onClick={() => setActiveCommentStatusId(null)} className="p-1 bg-cream-200 rounded-full hover:bg-cream-300 transition-colors"><X size={20} className="text-denim-600"/></button></div><div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">{comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}{comments.map(c => (<div key={c.id} className="flex gap-3 relative"><img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/><div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group"><div className="flex justify-between items-start gap-4"><h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5><button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button></div>{c.replyTo && (<div className="bg-cream-50 p-2 rounded-xl border-l-2 border-denim-400 mb-1.5"><p className="text-[10px] font-bold text-denim-600">{c.replyTo.userName}</p><p className="text-[10px] text-denim-400 truncate italic">"{c.replyTo.text}"</p></div>)}<p className="text-sm text-denim-700 leading-snug">{c.text}</p>{activeCommentMenuId === c.id && (<div className="absolute right-0 top-7 bg-white shadow-xl border border-cream-200 rounded-xl z-30 py-1 w-28 animate-in zoom-in-95 origin-top-right overflow-hidden"><button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2.5 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={14} /> Balas</button></div>)}</div></div>))}</div><div className="p-4 border-t border-cream-200 bg-white shrink-0">{replyingTo && ( <div className="flex justify-between items-center bg-cream-100 p-2.5 rounded-xl mb-3 text-xs border border-denim-200 animate-in slide-in-from-bottom-2"> <span className="text-denim-600 truncate">Balas ke <b>{replyingTo.name}</b>: "{replyingTo.text.substring(0, 20)}..."</span> <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-white rounded-full"><X size={14} className="text-denim-400 hover:text-red-500" /></button> </div> )}<form onSubmit={handleSendComment} className="flex gap-2 items-center pb-safe"><input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder={replyingTo ? `Tulis balasan...` : t.status.writeComment} className="flex-1 bg-cream-50 border border-cream-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 shadow-inner" autoFocus={!!replyingTo}/><button disabled={!commentText.trim() || sendingComment} className="p-3 bg-denim-600 text-white rounded-2xl hover:bg-denim-700 disabled:opacity-50 transition-all shadow-md active:scale-90"><Send size={20} /></button></form></div></div></div>)}
       </div>
     );
 };
@@ -481,7 +480,7 @@ export const MyStatusView: React.FC<SidebarViewProps> = ({ onBack, appSettings, 
       </div>
       {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Status?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg">Ya, Hapus</button></div></div></div>)}
       {zoomImage && (<div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-0 animate-in fade-in duration-300" onClick={() => setZoomImage(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/40 rounded-full hover:bg-black/60 transition-colors z-[101]"><X size={28} /></button><img src={zoomImage} className="max-w-full max-h-full object-contain select-none animate-in zoom-in-95 duration-500" /></div>)}
-      {activeCommentStatusId && (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setActiveCommentMenuId(null)}><div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 shrink-0"><h3 className="font-bold text-denim-900">Komentar Status Saya</h3><button onClick={() => setActiveCommentStatusId(null)} className="p-1 bg-cream-200 rounded-full hover:bg-cream-300 transition-colors"><X size={20} className="text-denim-600"/></button></div><div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">{comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}{comments.map(c => (<div key={c.id} className="flex gap-3 relative"><img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/><div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group"><div className="flex justify-between items-start gap-4"><h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5><button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button></div>{c.replyTo && (<div className="bg-cream-50 p-2 rounded-xl border-l-2 border-denim-400 mb-1.5"><p className="text-[10px] font-bold text-denim-600">{c.replyTo.userName}</p><p className="text-[10px] text-denim-400 truncate italic">"{c.replyTo.text}"</p></div>)}<p className="text-sm text-denim-700 leading-snug">{c.text}</p>{activeCommentMenuId === c.id && (<div className="absolute right-0 top-7 bg-white shadow-xl border border-cream-200 rounded-xl z-30 py-1 w-28 animate-in zoom-in-95 origin-top-right overflow-hidden"><button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2.5 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={14} /> Balas</button></div>)}</div></div>))}</div><div className="p-4 border-t border-cream-200 bg-white shrink-0">{replyingTo && ( <div className="flex justify-between items-center bg-cream-100 p-2.5 rounded-xl mb-3 text-xs border border-denim-200 animate-in slide-in-from-bottom-2"> <span className="text-denim-600 truncate">Balas ke <b>{replyingTo.name}</b>: "{replyingTo.text.substring(0, 15)}..."</span> <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-white rounded-full"><X size={14} className="text-denim-400" /></button> </div> )}<form onSubmit={handleSendComment} className="flex gap-2 items-center"><input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Tulis balasan..." className="flex-1 bg-cream-50 border border-cream-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 shadow-inner" autoFocus={!!replyingTo}/><button disabled={!commentText.trim() || sendingComment} className="p-3 bg-denim-100 text-denim-600 rounded-2xl hover:bg-denim-200 disabled:opacity-50 shadow-md active:scale-90"><Send size={20} /></button></form></div></div></div>)}
+      {activeCommentStatusId && (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setActiveCommentMenuId(null)}><div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 shrink-0"><h3 className="font-bold text-denim-900">Komentar Status Saya</h3><button onClick={() => setActiveCommentStatusId(null)} className="p-1 bg-cream-200 rounded-full hover:bg-cream-300 transition-colors"><X size={20} className="text-denim-600"/></button></div><div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">{comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}{comments.map(c => (<div key={c.id} className="flex gap-3 relative"><img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/><div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group"><div className="flex justify-between items-start gap-4"><h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5><button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button></div>{c.replyTo && (<div className="bg-cream-50 p-2 rounded-xl border-l-2 border-denim-400 mb-1.5"><p className="text-[10px] font-bold text-denim-600">{c.replyTo.userName}</p><p className="text-[10px] text-denim-400 truncate italic">"{c.replyTo.text}"</p></div>)}<p className="text-sm text-denim-700 leading-snug">{c.text}</p>{activeCommentMenuId === c.id && (<div className="absolute right-0 top-7 bg-white shadow-xl border border-cream-200 rounded-xl z-30 py-1 w-28 animate-in zoom-in-95 origin-top-right overflow-hidden"><button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2.5 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={14} /> Balas</button></div>)}</div></div>))}</div><div className="p-4 border-t border-cream-200 bg-white shrink-0 pb-safe">{replyingTo && ( <div className="flex justify-between items-center bg-cream-100 p-2.5 rounded-xl mb-3 text-xs border border-denim-200 animate-in slide-in-from-bottom-2"> <span className="text-denim-600 truncate">Balas ke <b>{replyingTo.name}</b>: "{replyingTo.text.substring(0, 15)}..."</span> <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-white rounded-full"><X size={14} className="text-denim-400" /></button> </div> )}<form onSubmit={handleSendComment} className="flex gap-2 items-center"><input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder="Tulis balasan..." className="flex-1 bg-cream-50 border border-cream-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 shadow-inner" autoFocus={!!replyingTo}/><button disabled={!commentText.trim() || sendingComment} className="p-3 bg-denim-100 text-denim-600 rounded-2xl hover:bg-denim-200 disabled:opacity-50 shadow-md active:scale-90"><Send size={20} /></button></form></div></div></div>)}
     </div>
   );
 };
@@ -616,7 +615,7 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
     ]));
 
     return (
-      <div className="border border-cream-200 rounded-xl max-h-48 overflow-y-auto custom-scrollbar bg-cream-50 divide-y divide-cream-100">
+      <div className="border border-cream-200 rounded-xl max-h-48 overflow-y-auto custom-scrollbar bg-cream-50 box-border divide-y divide-cream-100">
         {allManageableUids.length === 0 ? (
           <p className="p-4 text-center text-denim-400 text-sm">Belum ada kontak tersedia.</p>
         ) : (
@@ -649,7 +648,7 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
 
   return (
     <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
-      <div className="h-[60px] px-4 flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 shrink-0 text-denim-900">
+      <div className="h-[60px] px-4 pt-[calc(0rem+env(safe-area-inset-top))] flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 shrink-0 text-denim-900 box-content">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 -ms-2 text-denim-500 hover:bg-cream-200 rounded-full transition-colors"><ArrowLeft size={20} className="rtl:rotate-180" /></button>
           <h2 className="text-lg font-semibold">{isSelectionMode ? `${selectedGroupIds.size} Terpilih` : t.groups.title}</h2>
@@ -701,7 +700,6 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
       </div>
       {!isSelectionMode && ( <button onClick={handleOpenCreate} className="absolute bottom-24 md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-105 z-20"><Plus size={28} /></button> )}
       
-      {/* SMALLER CENTERED GROUP MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-denim-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white w-full max-w-md max-h-[85vh] rounded-2xl shadow-2xl flex flex-col animate-in zoom-in-95 overflow-hidden">
@@ -735,8 +733,8 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
                 <p className="text-[9px] text-denim-400 mt-1 text-right font-medium italic">Klik untuk menambah/mengeluarkan anggota</p>
               </div>
             </div>
-            <div className="p-4 border-t border-cream-200 bg-white shrink-0">
-              <button onClick={handleSubmit} disabled={processing || !groupName.trim()} className="w-full py-3 bg-denim-600 hover:bg-denim-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 text-sm">
+            <div className="p-4 border-t border-cream-200 bg-white shrink-0 pb-safe">
+              <button onClick={handleSubmit} disabled={processing || !groupName.trim()} className="w-full py-3 bg-denim-600 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 text-sm">
                 {processing && <Loader2 size={16} className="animate-spin" />}
                 {isEditing ? 'Simpan' : t.groups.create}
               </button>
@@ -749,6 +747,7 @@ export const GroupsView: React.FC<SidebarViewProps> = ({ onBack, onOpenGroupChat
   );
 };
 
+// --- CONTACTS VIEW (FIXED FOR ADMIN) ---
 export const ContactsView: React.FC<SidebarViewProps> = ({ onBack, onStartChat, appSettings }) => {
   const { currentUser } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -768,13 +767,36 @@ export const ContactsView: React.FC<SidebarViewProps> = ({ onBack, onStartChat, 
 
   useEffect(() => {
     if (!currentUser) return;
-    const unsub = onSnapshot(collection(db, 'users', currentUser.id, 'contacts'), (snap) => {
-      const list = snap.docs.map(d => ({id: d.id, ...d.data()} as Contact));
-      list.sort((a, b) => a.savedName.localeCompare(b.savedName));
-      setContacts(list);
-      setLoading(false);
-    });
-    return () => unsub();
+    setLoading(true);
+
+    if (currentUser.isAdmin) {
+      const unsub = onSnapshot(collection(db, 'users'), (snap) => {
+        const list = snap.docs
+          .filter(d => d.id !== currentUser.id)
+          .map(d => {
+            const data = d.data();
+            return {
+              id: d.id,
+              uid: d.id,
+              savedName: data.name,
+              phoneNumber: data.phoneNumber || '-',
+              avatar: data.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}`
+            } as Contact;
+          });
+        list.sort((a, b) => a.savedName.localeCompare(b.savedName));
+        setContacts(list);
+        setLoading(false);
+      });
+      return () => unsub();
+    } else {
+      const unsub = onSnapshot(collection(db, 'users', currentUser.id, 'contacts'), (snap) => {
+        const list = snap.docs.map(d => ({id: d.id, ...d.data()} as Contact));
+        list.sort((a, b) => a.savedName.localeCompare(b.savedName));
+        setContacts(list);
+        setLoading(false);
+      });
+      return () => unsub();
+    }
   }, [currentUser]);
 
   const handleSearchUser = async () => {
@@ -803,7 +825,9 @@ export const ContactsView: React.FC<SidebarViewProps> = ({ onBack, onStartChat, 
   const handleDeleteSelected = async () => {
       if (selectedContactIds.size === 0) return;
       const batch = writeBatch(db);
-      selectedContactIds.forEach(id => { batch.delete(doc(db, 'users', currentUser!.id, 'contacts', id)); });
+      selectedContactIds.forEach(id => { 
+        batch.delete(doc(db, 'users', currentUser!.id, 'contacts', id)); 
+      });
       await batch.commit(); setIsSelectionMode(false); setSelectedContactIds(new Set()); setShowDeleteConfirm(false);
   };
 
@@ -811,28 +835,159 @@ export const ContactsView: React.FC<SidebarViewProps> = ({ onBack, onStartChat, 
 
   return (
     <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
-      <div className="h-[60px] px-4 flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 shrink-0 text-denim-900">
+      <div className="h-[60px] px-4 pt-[calc(0rem+env(safe-area-inset-top))] flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 shrink-0 text-denim-900 box-content">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 -ms-2 text-denim-500 hover:bg-cream-200 rounded-full transition-colors"><ArrowLeft size={20} className="rtl:rotate-180" /></button>
-          <h2 className="text-lg font-semibold">{isSelectionMode ? `${selectedContactIds.size} Terpilih` : t.contacts.title}</h2>
+          <h2 className="text-lg font-semibold">{isSelectionMode ? `${selectedContactIds.size} Terpilih` : (currentUser?.isAdmin ? "Daftar Pengguna" : t.contacts.title)}</h2>
         </div>
         <div className="relative">
-            {isSelectionMode ? ( <div className="flex gap-2"><button onClick={() => { setIsSelectionMode(false); setSelectedContactIds(new Set()); }} className="text-sm font-bold text-denim-600 px-3 py-1 hover:bg-cream-200 rounded-lg">{t.common.cancel}</button>{selectedContactIds.size > 0 && <button onClick={() => setShowDeleteConfirm(true)} className="text-sm font-bold text-red-500 px-3 py-1 hover:bg-red-50 rounded-lg">{t.common.delete}</button>}</div> ) : ( <button onClick={() => setShowOptions(!showOptions)} className="p-2 -me-2 text-denim-500 hover:text-denim-700 hover:bg-cream-200 rounded-full transition-colors"><MoreVertical size={20}/></button> )}
+            {!currentUser?.isAdmin && isSelectionMode ? ( 
+               <div className="flex gap-2"><button onClick={() => { setIsSelectionMode(false); setSelectedContactIds(new Set()); }} className="text-sm font-bold text-denim-600 px-3 py-1 hover:bg-cream-200 rounded-lg">{t.common.cancel}</button>{selectedContactIds.size > 0 && <button onClick={() => setShowDeleteConfirm(true)} className="text-sm font-bold text-red-500 px-3 py-1 hover:bg-red-50 rounded-lg">{t.common.delete}</button>}</div> 
+            ) : !currentUser?.isAdmin ? ( 
+               <button onClick={() => setShowOptions(!showOptions)} className="p-2 -me-2 text-denim-500 hover:text-denim-700 hover:bg-cream-200 rounded-full transition-colors"><MoreVertical size={20}/></button> 
+            ) : null}
             {showOptions && !isSelectionMode && (<div className="absolute right-0 top-10 bg-white shadow-xl border border-cream-200 rounded-xl py-1 w-40 z-20 animate-in zoom-in-95"><button onClick={() => { setIsSelectionMode(true); setShowOptions(false); }} className="w-full text-left px-4 py-3 text-sm text-denim-800 hover:bg-cream-50 flex items-center gap-2"><CheckSquare size={16}/> {t.contacts.select}</button></div>)}
         </div>
       </div>
-      <div className="p-3 bg-cream-50 border-b border-cream-200"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-denim-400" size={16} /><input type="text" placeholder={t.contacts.search} value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-cream-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 text-denim-900"/></div></div>
+      <div className="p-3 bg-cream-50 border-b border-cream-200"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-denim-400" size={16} /><input type="text" placeholder={currentUser?.isAdmin ? "Cari pengguna..." : t.contacts.search} value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-cream-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 text-denim-900"/></div></div>
       <div className="p-2 flex-1 overflow-y-auto custom-scrollbar pb-32 md:pb-0">
-        {loading ? ( <div className="flex justify-center p-4"><Loader2 className="animate-spin text-denim-400" /></div> ) : filteredContacts.length === 0 ? ( <div className="text-center p-8 text-denim-400 text-sm">Belum ada kontak.</div> ) : (
+        {loading ? ( <div className="flex justify-center p-4"><Loader2 className="animate-spin text-denim-400" /></div> ) : filteredContacts.length === 0 ? ( <div className="text-center p-8 text-denim-400 text-sm">Tidak ada hasil.</div> ) : (
             filteredContacts.map(contact => {
                 const isSelected = selectedContactIds.has(contact.id);
-                return ( <div key={contact.id} onClick={() => { if (isSelectionMode) handleSelectContact(contact.id); else if (onStartChat) onStartChat(contact.uid); }} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors border ${isSelectionMode && isSelected ? 'bg-denim-100 border-denim-300' : 'border-transparent hover:bg-white hover:border-cream-200'}`}>{isSelectionMode && ( <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isSelected ? 'bg-denim-600 border-denim-600' : 'border-denim-300 bg-white'}`}>{isSelected && <CheckSquare size={14} className="text-white"/>}</div> )}<img src={contact.avatar} className="w-10 h-10 rounded-full object-cover bg-denim-200" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.savedName)}`}/><div className="flex-1 min-w-0"><h4 className="font-bold text-denim-900 text-sm truncate">{contact.savedName}</h4><p className="text-xs text-denim-500 truncate">{contact.phoneNumber}</p></div></div> );
+                return ( <div key={contact.id} onClick={() => { if (isSelectionMode) handleSelectContact(contact.id); else if (onStartChat) onStartChat(contact.uid); }} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors border ${isSelectionMode && isSelected ? 'bg-denim-100 border-denim-300' : 'border-transparent hover:bg-white hover:border-cream-200'}`}>{isSelectionMode && ( <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isSelected ? 'bg-denim-600 border-denim-600' : 'border-denim-300 bg-white'}`}>{isSelected && <CheckSquare size={14} className="text-white"/>}</div> )}<img src={contact.avatar} className="w-10 h-10 rounded-full object-cover bg-denim-200 border border-cream-200" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.savedName)}`}/><div className="flex-1 min-w-0"><h4 className="font-bold text-denim-900 text-sm truncate">{contact.savedName}</h4><p className="text-xs text-denim-500 truncate">{contact.phoneNumber}</p></div></div> );
             })
         )}
       </div>
-      {!isSelectionMode && ( <button onClick={() => { resetModal(); setShowAddModal(true); }} className="absolute bottom-24 md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-105 z-20"><UserPlus size={24} /></button> )}
+      {!currentUser?.isAdmin && !isSelectionMode && ( <button onClick={() => { resetModal(); setShowAddModal(true); }} className="absolute bottom-24 md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-105 z-20 pb-safe"><UserPlus size={24} /></button> )}
       {showAddModal && (<div className="fixed inset-0 z-50 flex items-center justify-center bg-denim-900/60 backdrop-blur-sm p-4 animate-in fade-in"><div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"><div className="px-6 py-4 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-lg text-denim-900">{t.contacts.newContact}</h3><button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-cream-200 rounded-full transition-colors"><X size={20} className="text-denim-500"/></button></div><div className="p-6">{!foundUser ? (<><label className="text-[10px] font-bold text-denim-600 uppercase mb-2 block tracking-wide">Cari Nomor HP</label><div className="flex gap-2 mb-2"><input type="tel" value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)} className="flex-1 px-4 py-3 border border-cream-300 rounded-xl bg-cream-50 focus:ring-2 focus:ring-denim-500 outline-none text-denim-900 placeholder-denim-300" placeholder="08..." autoFocus/><button onClick={handleSearchUser} disabled={searchingUser || !searchPhone} className="px-4 bg-denim-600 hover:bg-denim-700 text-white rounded-xl shadow-lg disabled:opacity-50 transition-all">{searchingUser ? <Loader2 size={20} className="animate-spin"/> : <Search size={20} />}</button></div>{searchError && <p className="text-xs text-red-500 mt-2 font-medium flex items-center gap-1"><AlertTriangle size={12}/> {searchError}</p>}</>) : (<div className="animate-in slide-in-from-right-4 duration-300"><div className="flex flex-col items-center mb-6"><img src={foundUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(foundUser.name)}`} className="w-20 h-20 rounded-full border-4 border-cream-100 shadow-md mb-3 object-cover" /><p className="font-bold text-denim-900 text-lg">{foundUser.name}</p><p className="text-sm text-denim-500">{foundUser.phoneNumber}</p><div className="mt-1 px-2 py-0.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full border border-green-200">Terdaftar</div></div><label className="text-[10px] font-bold text-denim-500 uppercase mb-2 block tracking-wide">Simpan Sebagai</label><input type="text" value={savedName} onChange={(e) => setSavedName(e.target.value)} className="w-full px-4 py-3 border border-cream-300 rounded-xl bg-cream-50 mb-6 focus:ring-2 focus:ring-denim-500 outline-none text-denim-900" placeholder="Nama Kontak"/><div className="flex gap-3"><button onClick={() => setFoundUser(null)} className="flex-1 py-3 bg-cream-100 text-denim-700 font-bold rounded-xl hover:bg-cream-200 transition-colors">Batal</button><button onClick={handleSaveContact} className="flex-1 py-3 bg-denim-600 text-white font-bold rounded-xl shadow-lg hover:bg-denim-700 transition-all">Simpan</button></div></div>)}</div></div></div>)}
       {showDeleteConfirm && ( <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><Trash2 size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Kontak?</h3><p className="text-sm text-denim-500 mb-6">Anda akan menghapus {selectedContactIds.size} kontak terpilih.</p><div className="flex gap-3"><button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={handleDeleteSelected} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg">Ya, Hapus</button></div></div></div> )}
+    </div>
+  );
+};
+
+// --- BROADCAST VIEW (FIXED REAL LOGIC) ---
+export const BroadcastView: React.FC<SidebarViewProps> = ({ onBack, appSettings }) => {
+  const { currentUser } = useAuth();
+  const [message, setMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [total, setTotal] = useState(0);
+  const t = translations[appSettings?.language || 'id'];
+
+  const handleBroadcast = async () => {
+    if (!message.trim() || !currentUser?.isAdmin) return;
+    setSending(true);
+    setProgress(0);
+    
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const allUsers = usersSnap.docs.filter(d => d.id !== currentUser.id);
+      setTotal(allUsers.length);
+      
+      const broadcastMsg = message.trim();
+      let sentCount = 0;
+
+      for (const uDoc of allUsers) {
+        const targetId = uDoc.id;
+        const targetData = uDoc.data();
+        
+        const q = query(collection(db, 'chats'), where('type', '==', 'direct'), where('participants', 'array-contains', targetId));
+        const chatSnap = await getDocs(q);
+        let chatId = '';
+        
+        let existing = chatSnap.docs.find(d => d.data().participants.includes(currentUser.id));
+        if (existing) {
+          chatId = existing.id;
+        } else {
+          const newChatRef = await addDoc(collection(db, 'chats'), {
+            type: 'direct',
+            participants: [currentUser.id, targetId],
+            name: targetData.name || 'User',
+            avatar: targetData.avatar || '',
+            lastMessage: broadcastMsg,
+            lastMessageType: 'text',
+            unreadCounts: { [targetId]: 1, [currentUser.id]: 0 },
+            updatedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            typing: {}
+          });
+          chatId = newChatRef.id;
+        }
+
+        const msgRef = push(ref(rtdb, `messages/${chatId}`));
+        await set(msgRef, {
+          senderId: currentUser.id,
+          content: broadcastMsg,
+          type: 'text',
+          status: 'sent',
+          createdAt: Date.now()
+        });
+
+        if (existing) {
+          await updateDoc(doc(db, 'chats', chatId), {
+            lastMessage: broadcastMsg,
+            lastMessageType: 'text',
+            updatedAt: serverTimestamp(),
+            [`unreadCounts.${targetId}`]: increment(1)
+          });
+        }
+        
+        sentCount++;
+        setProgress(sentCount);
+      }
+
+      alert(t.broadcast.success.replace('{count}', sentCount.toString()));
+      setMessage('');
+    } catch (e) {
+      console.error(e);
+      alert("Gagal mengirim broadcast.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!currentUser?.isAdmin) return <div className="p-4 text-center">Akses Ditolak</div>;
+
+  return (
+    <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
+      <ViewHeader title={t.broadcast.title} onBack={onBack} />
+      <div className="p-4 pb-32 md:pb-0 flex-1 overflow-y-auto custom-scrollbar">
+         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6 flex gap-3"><AlertTriangle className="text-yellow-600 shrink-0" /><div><h4 className="font-bold text-yellow-800 text-sm">Peringatan Keamanan</h4><p className="text-xs text-yellow-700 mt-1">{t.broadcast.warning}</p></div></div>
+         
+         <div className="bg-white p-6 rounded-2xl border border-cream-200 shadow-sm space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold text-denim-600 uppercase tracking-widest mb-2 ml-1">{t.broadcast.messageLabel}</label>
+              <textarea 
+                value={message} 
+                onChange={(e) => setMessage(e.target.value)} 
+                className="w-full h-40 p-4 rounded-2xl bg-cream-50 border border-cream-300 focus:ring-2 focus:ring-denim-500 outline-none text-denim-900 transition-all resize-none text-sm leading-relaxed" 
+                placeholder={t.broadcast.placeholder}
+                disabled={sending}
+              />
+            </div>
+            
+            {sending && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-bold text-denim-600">
+                  <span>Mengirim...</span>
+                  <span>{progress} / {total}</span>
+                </div>
+                <div className="w-full h-2 bg-cream-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-denim-600 transition-all duration-300" style={{ width: `${(progress/total) * 100}%` }}></div>
+                </div>
+              </div>
+            )}
+
+            <button 
+              onClick={handleBroadcast} 
+              disabled={sending || !message.trim()} 
+              className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 transition-all active:scale-95"
+            >
+              {sending ? <Loader2 className="animate-spin" /> : <Radio size={20} />} 
+              {sending ? t.broadcast.sending : t.broadcast.send}
+            </button>
+         </div>
+      </div>
     </div>
   );
 };
@@ -1006,29 +1161,6 @@ export const ProfileView: React.FC<SidebarViewProps> = ({ onBack, appSettings })
             <div><label className="text-xs font-bold text-denim-500 uppercase block mb-1">Nomor HP</label><p className="text-md text-denim-600 font-mono bg-cream-50 p-2 rounded-lg">{currentUser?.phoneNumber}</p></div>
          </div>
          <div className="mt-6">{isEditing ? ( <div className="flex gap-3"><button onClick={() => setIsEditing(false)} className="flex-1 py-3 bg-cream-200 text-denim-700 font-bold rounded-xl">Batal</button><button onClick={handleSave} disabled={loading} className="flex-1 py-3 bg-denim-600 text-white font-bold rounded-xl flex justify-center items-center gap-2">{loading && <Loader2 size={16} className="animate-spin"/>} Simpan</button></div> ) : ( <button onClick={() => setIsEditing(true)} className="w-full py-3 bg-denim-600 text-white font-bold rounded-xl">Edit Profil</button> )}</div>
-      </div>
-    </div>
-  );
-};
-
-export const BroadcastView: React.FC<SidebarViewProps> = ({ onBack, appSettings }) => {
-  const { currentUser } = useAuth();
-  const [message, setMessage] = useState('');
-  const [sending, setSending] = useState(false);
-  const t = translations[appSettings?.language || 'id'];
-  const handleBroadcast = async () => {
-    if (!message.trim() || !currentUser?.isAdmin) return;
-    setSending(true);
-    try { alert(`Broadcast terkirim: ${message}`); setMessage(''); } finally { setSending(false); }
-  };
-  if (!currentUser?.isAdmin) return <div className="p-4 text-center">Akses Ditolak</div>;
-  return (
-    <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
-      <ViewHeader title={t.broadcast.title} onBack={onBack} />
-      <div className="p-4 pb-32 md:pb-0">
-         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6 flex gap-3"><AlertTriangle className="text-yellow-600 shrink-0" /><div><h4 className="font-bold text-yellow-800 text-sm">Peringatan</h4><p className="text-xs text-yellow-700 mt-1">Pesan akan dikirim ke SEMUA pengguna.</p></div></div>
-         <label className="block text-sm font-bold text-denim-700 mb-2">Isi Pesan Siaran</label><textarea value={message} onChange={(e) => setMessage(e.target.value)} className="w-full h-40 p-4 rounded-xl border border-cream-300 focus:ring-2 focus:ring-denim-500 outline-none mb-4" placeholder="Tulis pengumuman..."/>
-         <button onClick={handleBroadcast} disabled={sending || !message.trim()} className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2">{sending ? <Loader2 className="animate-spin" /> : <Radio size={20} />} Kirim Siaran</button>
       </div>
     </div>
   );

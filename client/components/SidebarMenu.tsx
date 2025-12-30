@@ -172,7 +172,7 @@ export const SidebarMenu: React.FC<SidebarMenuProps> = ({
           </button>
           
           <div className="text-center text-xs text-denim-400 mt-2">
-            <p>Hud-Hud Web v1.3.0</p>
+            <p>Hud-Hud App v.1.1.0</p>
           </div>
         </div>
       </div>

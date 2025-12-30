@@ -169,7 +169,49 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => unsubscribe();
   }, [chat.id, currentUser.id]);
 
-  useEffect(() => { if (showContactPicker) { const list = Object.values(contactsMap).sort((a: Contact, b: Contact) => a.savedName.localeCompare(b.savedName)); setMyContacts(list); } }, [showContactPicker, contactsMap]);
+  useEffect(() => {
+    if (showContactPicker) {
+      const list = Object.values(contactsMap).sort((a: Contact, b: Contact) => a.savedName.localeCompare(b.savedName));
+      setMyContacts(list);
+    }
+  }, [showContactPicker, contactsMap]);
+
+  useEffect(() => {
+    if (showInfoModal && chat.type === 'group' && !infoModalUser) {
+      const fetchMembers = async () => {
+        setLoadingMembers(true);
+        const members: User[] = [];
+        try {
+          for (const uid of chat.participants) {
+            if (uid === currentUser.id) {
+              members.push({ ...currentUser, name: t.common.you });
+              continue;
+            }
+            if (adminProfile && uid === adminProfile.id) {
+              members.push({ ...adminProfile, isAdmin: true });
+              continue;
+            }
+            const contact = contactsMap[uid];
+            if (contact) {
+              members.push({ id: uid, name: contact.savedName, avatar: contact.avatar, phoneNumber: contact.phoneNumber, status: 'offline', bio: '' } as User);
+            } else {
+              const docSnap = await getDoc(doc(db, 'users', uid));
+              if (docSnap.exists()) {
+                const uData = docSnap.data();
+                members.push({ id: docSnap.id, ...uData } as User);
+              }
+            }
+          }
+          setGroupMembersInfo(members);
+        } catch (e) {
+          console.error(e);
+        } finally {
+          setLoadingMembers(false);
+        }
+      };
+      fetchMembers();
+    }
+  }, [showInfoModal, chat, infoModalUser, contactsMap, adminProfile, currentUser, t.common.you]);
 
   const showToast = (message: string) => { setToastMessage(message); setTimeout(() => setToastMessage(null), 3000); };
 
@@ -252,7 +294,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSendLocation = () => { if (!navigator.geolocation) return; setIsUploading(true); setUploadProgress(t.common.processing); setShowAttachMenu(false); navigator.geolocation.getCurrentPosition((pos) => { handleSendMessage('location', '', { location: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } }).finally(() => { setIsUploading(false); setUploadProgress(""); }); }, () => { setIsUploading(false); setUploadProgress(""); }, { enableHighAccuracy: true, timeout: 15000 }); };
   const handleSendContact = (contact: Contact) => { handleSendMessage('contact', '', { contact: { uid: contact.uid, name: contact.savedName, phoneNumber: contact.phoneNumber, avatar: contact.avatar } }); setShowContactPicker(false); };
   
-  // VOICE NOTE LOGIC
   const startRecording = async () => { 
     try { 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
@@ -280,7 +321,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     clearInterval(recordingTimerRef.current); setIsRecording(false); 
   };
 
-  // Smart Content Parser & Video Detection
   const parseContent = (content: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = content.split(urlRegex);
@@ -303,27 +343,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const checkVideo = (content: string) => {
     const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtu\.be)\/(?:watch\?v=)?(.+)/i;
-    const directVideoRegex = /\.(mp4|webm|ogg)$/i;
-    
     const ytMatch = content.match(youtubeRegex);
     if (ytMatch) {
         const id = ytMatch[1].split('&')[0].split('?')[0];
         return { type: 'youtube', url: `https://www.youtube.com/embed/${id}` };
     }
-    
     const directMatch = content.match(/(https?:\/\/[^\s]+\.(mp4|webm|ogg))/i);
     if (directMatch) {
         return { type: 'direct', url: directMatch[0] };
     }
-    
     return null;
   };
 
   const renderMessageContent = (msg: Message, isMe: boolean) => {
     if (msg.senderId === 'system') return (<div className="flex justify-center w-full my-1"><div className="bg-cream-200/50 px-4 py-1.5 rounded-full border border-cream-300"><p className="text-[11px] font-bold text-denim-600 uppercase italic">{msg.content}</p></div></div>);
-    
     const videoData = msg.type === 'text' ? checkVideo(msg.content) : null;
-
     switch (msg.type) {
       case 'image': return (<div className="mb-1"><img src={msg.fileUrl} onClick={() => setZoomImage(msg.fileUrl || null)} className="rounded-lg max-h-64 object-cover cursor-pointer" />{msg.content && <p className={`mt-1 ${fontSizeClass}`}>{msg.content}</p>}</div>);
       case 'audio': return (<div className="flex items-center gap-3 min-w-[200px] py-1"><div className={`p-2 rounded-full ${isMe ? 'bg-denim-600' : 'bg-denim-100'}`}><Mic size={20} className={isMe ? 'text-white' : 'text-denim-600'} /></div><audio controls src={msg.fileUrl} className="h-8 w-48" /></div>);
@@ -406,7 +440,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
       </div>
       
-      {/* MODALS - Tetap menjaga tampilan unread merah dan fitur keamanan link */}
       {pendingExternalLink && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-cream-200 text-center animate-in zoom-in-95 duration-200">
@@ -462,7 +495,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {showDeleteConfirm && (<div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"><h3 className="font-bold text-lg text-denim-900 mb-2 text-center">{t.chatWindow.deleteMsg}</h3><p className="text-sm text-denim-500 text-center mb-6">{t.chatWindow.deleteMsgConfirm.replace('{count}', selectedMessageIds.size.toString())}</p><div className="flex gap-3"><button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="flex-1 py-2 bg-cream-100 text-denim-700 rounded-xl font-medium">{t.common.cancel}</button><button onClick={handleDeleteMessages} disabled={isDeleting} className="flex-1 py-2 bg-red-500 text-white rounded-xl font-medium flex justify-center gap-2 items-center">{isDeleting && <Loader2 size={16} className="animate-spin"/>} {t.common.delete}</button></div></div></div>)}
 
-      {showInfoModal && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"><div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl relative animate-in zoom-in-95 flex flex-col max-h-[80vh]"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-10 rtl:left-4 rtl:right-auto"><X size={20} /></button><div className="h-32 bg-denim-700 relative rounded-t-2xl shrink-0"><div className="absolute inset-0 opacity-10 pattern-bg rounded-t-2xl"></div></div><div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-0 flex-1 overflow-y-auto custom-scrollbar"><div className="relative group cursor-pointer" onClick={() => setZoomImage(infoModalUser?.avatar || displayAvatar)}><img src={infoModalUser?.avatar || displayAvatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" /></div><h2 className="mt-3 text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">{infoModalUser?.name || chat.name}{((infoModalUser?.isAdmin) || (adminProfile && infoModalUser?.id === adminProfile.id)) && <BadgeCheck size={18} className="text-white fill-blue-500" />}</h2><p className="text-denim-500 text-sm font-medium mb-4 text-center">{chat.type === 'group' && !infoModalUser ? `${chat.participants.length} ${t.groups.members}` : (infoModalUser?.phoneNumber || '-')}</p><div className="w-full bg-cream-50 p-4 rounded-xl border border-cream-200 text-center shrink-0"><p className="text-sm text-denim-700 italic">"{chat.type === 'group' && !infoModalUser ? (chat.description || '-') : (infoModalUser?.bio || '-')}"</p></div>{chat.type === 'group' && !infoModalUser && (<div className="mt-4 w-full"><p className="text-xs font-bold text-denim-400 uppercase tracking-wider mb-2 text-center">{t.groups.members}</p><div className="space-y-2 mt-2">{loadingMembers ? <div className="flex justify-center"><Loader2 className="animate-spin text-denim-400" size={20}/></div> : groupMembersInfo.map(m => (<div key={m.id} className="flex items-center gap-3 p-2 hover:bg-cream-50 rounded-lg"><img src={m.avatar} className="w-8 h-8 rounded-full object-cover shrink-0"/><div className="text-start flex-1 min-w-0 flex items-center gap-1"><p className="text-sm font-semibold text-denim-800 truncate">{m.name}</p>{m.isAdmin && <BadgeCheck size={14} className="text-white fill-blue-500" />}</div>{chat.adminIds?.includes(m.id) && <span className="text-[10px] bg-denim-100 text-denim-600 px-2 py-0.5 rounded-full font-bold">{t.chatWindow.admin}</span>}</div>))}</div></div>)}</div></div></div>)}
+      {showInfoModal && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"><div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl relative animate-in zoom-in-95 flex flex-col max-h-[80vh]"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-10 rtl:left-4 rtl:right-auto"><X size={20} /></button><div className="h-32 bg-denim-700 relative rounded-t-2xl shrink-0"><div className="absolute inset-0 opacity-10 pattern-bg rounded-t-2xl"></div></div><div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-0 flex-1 overflow-y-auto custom-scrollbar"><div className="relative group cursor-pointer" onClick={() => setZoomImage(infoModalUser?.avatar || displayAvatar)}><img src={infoModalUser?.avatar || displayAvatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" /></div><h2 className="mt-3 text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">{infoModalUser?.name || chat.name}{((infoModalUser?.isAdmin) || (adminProfile && infoModalUser?.id === adminProfile.id)) && <BadgeCheck size={18} className="text-white fill-blue-500" />}</h2><p className="text-denim-500 text-sm font-medium mb-4 text-center">{chat.type === 'group' && !infoModalUser ? `${chat.participants.length} ${t.groups.members}` : (infoModalUser?.phoneNumber || '-')}</p><div className="w-full bg-cream-50 p-4 rounded-xl border border-cream-200 text-center shrink-0"><p className="text-sm text-denim-700 italic">"{chat.type === 'group' && !infoModalUser ? (chat.description || '-') : (infoModalUser?.bio || '-')}"</p></div>{chat.type === 'group' && !infoModalUser && (<div className="mt-4 w-full"><p className="text-xs font-bold text-denim-400 uppercase tracking-wider mb-2 text-center">{t.groups.members}</p><div className="space-y-2 mt-2">{loadingMembers ? <div className="flex justify-center"><Loader2 className="animate-spin text-denim-400" size={20}/></div> : groupMembersInfo.map(m => (<div key={m.id} className="flex items-center gap-3 p-2 hover:bg-cream-50 rounded-lg"><img src={m.avatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}`}/><div className="text-start flex-1 min-w-0 flex items-center gap-1"><p className="text-sm font-semibold text-denim-800 truncate">{m.name}</p>{m.isAdmin && <BadgeCheck size={14} className="text-white fill-blue-500" />}</div>{chat.adminIds?.includes(m.id) && <span className="text-[10px] bg-denim-100 text-denim-600 px-2 py-0.5 rounded-full font-bold">{t.chatWindow.admin}</span>}</div>))}</div></div>)}</div></div></div>)}
       {zoomImage && (<div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-0 animate-in fade-in duration-200" onClick={() => setZoomImage(null)}><button className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 text-white/80 hover:text-white z-[101] bg-black/40 rounded-full p-2 rtl:left-4 rtl:right-auto"><X size={28} /></button><img src={zoomImage} className="w-full h-full object-contain pointer-events-none select-none" /></div>)}
       {toastMessage && (<div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-denim-800 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-2"><CheckCircle2 size={18} className="text-green-400" /><span className="text-sm font-medium">{toastMessage}</span></div>)}
       {showContactPicker && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[70vh]"><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-denim-900">{t.chatWindow.attach.contact}</h3><button onClick={() => setShowContactPicker(false)}><X size={20} className="text-denim-500"/></button></div><div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white"><div className="space-y-1">{myContacts.map(c => (<div key={c.id} onClick={() => handleSendContact(c)} className="flex items-center gap-3 p-3 hover:bg-cream-100 rounded-xl cursor-pointer"><img src={c.avatar} className="w-10 h-10 rounded-full shrink-0" /><div><p className="font-bold text-sm text-denim-900 flex items-center gap-1">{c.savedName}</p><p className="text-xs text-denim-500">{c.phoneNumber}</p></div></div>))}</div></div></div></div>)}

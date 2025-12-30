@@ -12,7 +12,7 @@ import { translations } from '../utils/translations';
 import { cleanupExpiredMessages, cleanupExpiredStatuses, cleanupExpiredNotifications } from '../services/cleanup';
 import { sendSystemNotification } from '../utils/notificationHelper';
 import { requestFcmToken, onMessageListener } from '../utils/fcm';
-import { Bell, MessageSquare, Users, Activity, User as UserIcon, Settings } from 'lucide-react';
+import { Bell, MessageSquare, Users, Activity, User as UserIcon, Settings, Radio } from 'lucide-react';
 import { ref, onValue } from 'firebase/database';
 
 export interface AppSettings {
@@ -54,7 +54,6 @@ export const Layout: React.FC = () => {
 
   const [adminProfile, setAdminProfile] = useState<User | null>(null);
 
-  // Perbaikan Stabilitas untuk Mobile/Capacitor
   useEffect(() => {
     try {
       if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -153,7 +152,6 @@ export const Layout: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser, selectedChat, appSettings]);
 
-  // Safe PopState handling for Capacitor
   useEffect(() => {
     const handlePopState = () => {
       try {
@@ -269,7 +267,7 @@ export const Layout: React.FC = () => {
   return (
     <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900 justify-start" dir={isRtl ? 'rtl' : 'ltr'}>
       {showPermissionBanner && (
-        <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md animate-in slide-in-from-top-full duration-300">
+        <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md animate-in slide-in-from-top-full duration-300 pt-safe">
            <div className="flex items-center gap-3">
              <div className="p-2 bg-white/20 rounded-full"><Bell size={18} className="text-white animate-pulse" /></div>
              <div className="text-sm"><p className="font-bold">Aktifkan Notifikasi?</p><p className="text-xs text-denim-100">Tetap terhubung saat aplikasi ditutup.</p></div>
@@ -294,17 +292,24 @@ export const Layout: React.FC = () => {
         )}
 
         {/* Mobile Footer Navigation */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-cream-200 flex justify-between items-end px-2 py-2 z-50 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] h-16">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-cream-200 flex justify-between items-end px-2 py-2 z-50 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] h-16 pb-safe">
            <button onClick={() => setCurrentView('chats')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'chats' ? 'text-denim-700' : 'text-denim-400'}`}>
              <MessageSquare size={22} className={currentView === 'chats' ? 'fill-denim-100/30' : ''} />
              {totalUnreadMessages > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}
              <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Obrolan</span>
            </button>
            
-           <button onClick={() => setCurrentView('groups')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'groups' ? 'text-denim-700' : 'text-denim-400'}`}>
-             <Users size={22} className={currentView === 'groups' ? 'fill-denim-100/30' : ''} />
-             <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Grup</span>
-           </button>
+           {currentUser.isAdmin ? (
+             <button onClick={() => setCurrentView('broadcast')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'broadcast' ? 'text-denim-700' : 'text-denim-400'}`}>
+               <Radio size={22} className={currentView === 'broadcast' ? 'fill-denim-100/30' : ''} />
+               <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Siaran</span>
+             </button>
+           ) : (
+             <button onClick={() => setCurrentView('groups')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'groups' ? 'text-denim-700' : 'text-denim-400'}`}>
+               <Users size={22} className={currentView === 'groups' ? 'fill-denim-100/30' : ''} />
+               <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Grup</span>
+             </button>
+           )}
            
            {/* Status Icon */}
            <button onClick={() => setCurrentView('status')} className={`flex flex-col items-center justify-center flex-1 transition-all duration-300`}>
@@ -324,7 +329,7 @@ export const Layout: React.FC = () => {
            <button onClick={() => setCurrentView('notifications')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'notifications' ? 'text-denim-700' : 'text-denim-400'}`}>
              <Bell size={22} className={currentView === 'notifications' ? 'fill-denim-100/30' : ''} />
              {unreadNotifCount > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{unreadNotifCount}</span>}
-             <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Pemberitahuan</span>
+             <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Notif</span>
            </button>
            
            <button onClick={() => setCurrentView('contacts')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'contacts' ? 'text-denim-700' : 'text-denim-400'}`}>
