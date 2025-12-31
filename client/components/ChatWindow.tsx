@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { ChatPreview, Message, User, Contact } from '../types';
 import { format } from 'date-fns';
-import { doc, updateDoc, increment, getDoc, writeBatch, arrayUnion, onSnapshot as onFirestoreSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, increment, getDoc, writeBatch, arrayUnion, addDoc, collection, onSnapshot as onFirestoreSnapshot, serverTimestamp } from 'firebase/firestore';
 import { ref, push, set, onValue, serverTimestamp as rtdbTimestamp, remove, update } from 'firebase/database';
 import { db, rtdb } from '../services/firebase';
 import { uploadFileToCloudinary, uploadImageToCloudinary } from '../services/cloudinary';
@@ -50,6 +50,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [infoModalUser, setInfoModalUser] = useState<User | null>(null);
+  
+  // States for adding contact in modal
+  const [isAddingContact, setIsAddingContact] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [savingContact, setSavingContact] = useState(false);
+
   const [groupMembersInfo, setGroupMembersInfo] = useState<User[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [zoomImage, setZoomImage] = useState<string | null>(null);
@@ -228,11 +234,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const handleHeaderClick = async () => { 
+    setIsAddingContact(false);
+    setNewContactName('');
     if (chat.type === 'group') { setInfoModalUser(null); setShowInfoModal(true); } 
     else { const partnerId = chat.participants.find(p => p !== currentUser.id); if (partnerId) { if (adminProfile && partnerId === adminProfile.id) { setInfoModalUser(adminProfile); setShowInfoModal(true); } else { await handleOpenUserInfo(partnerId); } } } 
   };
   
   const handleOpenUserInfo = async (targetUid: string) => {
+    setIsAddingContact(false);
+    setNewContactName('');
     if (adminProfile && targetUid === adminProfile.id) { setInfoModalUser(adminProfile); setShowInfoModal(true); return; }
     const docSnap = await getDoc(doc(db, 'users', targetUid)); 
     if (docSnap.exists()) { 
@@ -242,6 +252,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
          setInfoModalUser({ id: docSnap.id, ...userData, name: contactsMap[targetUid]?.savedName || userData.name, avatar: finalAvatar } as User);
     }
     setShowInfoModal(true);
+  };
+
+  const handleSaveContactModal = async () => {
+    if (!infoModalUser || !newContactName.trim()) return;
+    setSavingContact(true);
+    try {
+      await addDoc(collection(db, 'users', currentUser.id, 'contacts'), { 
+        uid: infoModalUser.id, 
+        savedName: newContactName.trim(), 
+        phoneNumber: infoModalUser.phoneNumber || '', 
+        avatar: infoModalUser.avatar || '' 
+      });
+      showToast("Contact Saved Successfully");
+      setIsAddingContact(false);
+      setShowInfoModal(false);
+    } catch (e) {
+      alert("Gagal menyimpan kontak.");
+    } finally {
+      setSavingContact(false);
+    }
   };
   
   const handleSendMessage = async (type: Message['type'], content: string, extraData: Partial<Message> = {}) => {
@@ -395,12 +425,62 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
+  const isPartnerInContacts = partnerUid ? !!contactsMap[partnerUid] : true;
+
   return (
     <div className="flex flex-col h-full bg-cream-50 relative pattern-bg">
+      <style>{`
+        @keyframes gradient-border {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .modern-modal-glow {
+          position: relative;
+          padding: 3px;
+          border-radius: 24px;
+          background: linear-gradient(270deg, #154c79, #36b2fa, #0c9aeb, #bae2fd);
+          background-size: 400% 400%;
+          animation: gradient-border 6s ease infinite;
+        }
+      `}</style>
+
       <div className="absolute inset-0 opacity-20 pointer-events-none z-0" style={bgStyle}></div>
       <div className="flex items-center justify-between p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-cream-200 bg-cream-50/95 backdrop-blur-sm z-30 shadow-sm relative text-denim-900 shrink-0">
         {isSelectionMode ? ( <div className="flex items-center gap-4 w-full"><button onClick={toggleSelectionMode} className="p-2 hover:bg-cream-200 rounded-full transition-colors"><X size={20} className="text-denim-600"/></button><span className="text-lg font-bold">{selectedMessageIds.size} {t.chatWindow.select}</span><div className="flex-1"/><button onClick={() => selectedMessageIds.size > 0 && setShowDeleteConfirm(true)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors"><Trash2 size={24} /></button></div> ) : (
-          <><div className="flex items-center gap-3 cursor-pointer" onClick={handleHeaderClick}><button onClick={(e) => { e.stopPropagation(); onBack(); }} className="md:hidden p-2 -ms-2 text-denim-500"><ArrowLeft size={20} className="rtl:rotate-180" /></button><img src={displayAvatar} className="w-10 h-10 rounded-full border border-cream-300 object-cover" /><div className="flex flex-col"><h2 className="font-bold text-[15px] flex items-center gap-1">{resolvedName}{isVerifiedChat && <BadgeCheck size={16} className="text-white fill-blue-500" />}</h2><div className="flex items-center gap-1 text-xs text-denim-500"><p>{chat.type === 'group' ? `${chat.participants.length} ${t.groups.members}` : (partnerStatus === 'online' ? t.common.online : t.common.offline)}</p></div></div></div><div className="flex items-center gap-4 text-denim-400 relative"><button className="hidden sm:block hover:text-denim-600 transition-colors"><Phone size={20} /></button><button className="hidden sm:block hover:text-denim-600 transition-colors"><Video size={20} /></button><button onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="ps-2 border-s border-cream-300 hover:text-denim-600 transition-colors"><MoreVertical size={20} /></button>{showHeaderMenu && (<div className="absolute end-0 top-10 bg-white shadow-xl border border-cream-200 rounded-xl py-1 w-48 z-50 animate-in fade-in zoom-in-95"><button onClick={() => { setShowHeaderMenu(false); handleHeaderClick(); }} className="w-full text-start px-4 py-3 hover:bg-cream-50 text-sm text-denim-800 flex items-center gap-2"><Info size={16}/> {chat.type === 'group' ? t.chatWindow.infoGroup : t.chatWindow.infoContact}</button><button onClick={toggleSelectionMode} className="w-full text-start px-4 py-3 hover:bg-red-50 text-sm text-red-500 flex items-center gap-2 border-t border-cream-100"><Trash2 size={16}/> {t.chatWindow.deleteMsg}</button></div>)}</div></>
+          <>
+            <div className="flex items-center gap-3 cursor-pointer overflow-hidden" onClick={handleHeaderClick}>
+              <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="md:hidden p-2 -ms-2 text-denim-500"><ArrowLeft size={20} className="rtl:rotate-180" /></button>
+              <img src={displayAvatar} className="w-10 h-10 rounded-full border border-cream-300 object-cover shrink-0" />
+              <div className="flex flex-col min-w-0">
+                <h2 className="font-bold text-[15px] flex items-center gap-1 truncate">
+                  {resolvedName}{isVerifiedChat && <BadgeCheck size={16} className="text-white fill-blue-500 shrink-0" />}
+                </h2>
+                <div className="flex items-center gap-1 text-xs text-denim-500">
+                  <p className="truncate">{chat.type === 'group' ? `${chat.participants.length} ${t.groups.members}` : (partnerStatus === 'online' ? t.common.online : t.common.offline)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-denim-400 relative">
+              {chat.type === 'direct' && !isPartnerInContacts && partnerUid && (
+                <button 
+                  onClick={handleHeaderClick}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-denim-600 hover:bg-denim-700 text-white rounded-full text-xs font-bold shadow-md transition-all active:scale-95 me-2"
+                >
+                  <UserPlus size={14} /> <span>Tambah</span>
+                </button>
+              )}
+              <button className="hidden sm:block p-2 hover:text-denim-600 transition-colors"><Phone size={20} /></button>
+              <button className="hidden sm:block p-2 hover:text-denim-600 transition-colors"><Video size={20} /></button>
+              <button onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 border-s border-cream-300 hover:text-denim-600 transition-colors"><MoreVertical size={20} /></button>
+              {showHeaderMenu && (
+                <div className="absolute end-0 top-10 bg-white shadow-xl border border-cream-200 rounded-xl py-1 w-48 z-50 animate-in fade-in zoom-in-95">
+                  <button onClick={() => { setShowHeaderMenu(false); handleHeaderClick(); }} className="w-full text-start px-4 py-3 hover:bg-cream-50 text-sm text-denim-800 flex items-center gap-2"><Info size={16}/> {chat.type === 'group' ? t.chatWindow.infoGroup : t.chatWindow.infoContact}</button>
+                  <button onClick={toggleSelectionMode} className="w-full text-start px-4 py-3 hover:bg-red-50 text-sm text-red-500 flex items-center gap-2 border-t border-cream-100"><Trash2 size={16}/> {t.chatWindow.deleteMsg}</button>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
 
@@ -419,7 +499,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               {isSelectionMode && (<div onClick={() => handleMessageSelect(msg.id)} className={`mt-2 cursor-pointer w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isSelected ? 'bg-denim-600 border-denim-600' : 'border-denim-300 bg-white'}`}>{isSelected && <CheckSquare size={14} className="text-white"/>}</div>)}
               {!isMe && chat.type === 'group' && !isSelectionMode && (<img src={senderAvatar || ''} className="w-8 h-8 rounded-full mt-1 cursor-pointer hover:opacity-80 transition-opacity object-cover border border-cream-200 shrink-0" onClick={() => handleOpenUserInfo(msg.senderId)}/>)}
               <div className={`max-w-[85%] md:max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'} relative`}>
-                {senderName && (<span className="text-[10px] text-denim-500 font-bold mb-1 ms-1 flex items-center gap-1">{senderName}{isMsgAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</span>)}
+                {senderName && (<span className="text-[10px] text-denim-50 font-bold mb-1 ms-1 flex items-center gap-1">{senderName}{isMsgAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</span>)}
                 <div className={`px-4 py-2 rounded-2xl relative shadow-sm min-w-[120px] transition-colors ${isMe ? 'bg-denim-700 text-white rounded-be-none' : 'bg-white text-denim-900 rounded-bs-none border border-cream-200'} ${isSelected ? 'ring-2 ring-denim-400 ring-offset-2' : ''}`} onContextMenu={(e) => { e.preventDefault(); if (!isSelectionMode) setActiveMessageMenu(activeMessageMenu === msg.id ? null : msg.id); }}>
                   {msg.replyTo && (<div className={`mb-2 p-2 rounded-lg text-xs border-s-4 cursor-pointer hover:opacity-80 ${isMe ? 'bg-black/20 border-white/50 text-white' : 'bg-cream-100 border-denim-500 text-denim-800'}`} onClick={() => scrollToMessage(msg.replyTo!.id)}><p className="font-bold mb-0.5">{msg.replyTo.senderName}</p><p className="truncate opacity-80">{msg.replyTo.content}</p></div>)}
                   {renderMessageContent(msg, isMe)}
@@ -495,7 +575,96 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {showDeleteConfirm && (<div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"><h3 className="font-bold text-lg text-denim-900 mb-2 text-center">{t.chatWindow.deleteMsg}</h3><p className="text-sm text-denim-500 text-center mb-6">{t.chatWindow.deleteMsgConfirm.replace('{count}', selectedMessageIds.size.toString())}</p><div className="flex gap-3"><button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="flex-1 py-2 bg-cream-100 text-denim-700 rounded-xl font-medium">{t.common.cancel}</button><button onClick={handleDeleteMessages} disabled={isDeleting} className="flex-1 py-2 bg-red-500 text-white rounded-xl font-medium flex justify-center gap-2 items-center">{isDeleting && <Loader2 size={16} className="animate-spin"/>} {t.common.delete}</button></div></div></div>)}
 
-      {showInfoModal && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"><div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl relative animate-in zoom-in-95 flex flex-col max-h-[80vh]"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-10 rtl:left-4 rtl:right-auto"><X size={20} /></button><div className="h-32 bg-denim-700 relative rounded-t-2xl shrink-0"><div className="absolute inset-0 opacity-10 pattern-bg rounded-t-2xl"></div></div><div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-0 flex-1 overflow-y-auto custom-scrollbar"><div className="relative group cursor-pointer" onClick={() => setZoomImage(infoModalUser?.avatar || displayAvatar)}><img src={infoModalUser?.avatar || displayAvatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" /></div><h2 className="mt-3 text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">{infoModalUser?.name || chat.name}{((infoModalUser?.isAdmin) || (adminProfile && infoModalUser?.id === adminProfile.id)) && <BadgeCheck size={18} className="text-white fill-blue-500" />}</h2><p className="text-denim-500 text-sm font-medium mb-4 text-center">{chat.type === 'group' && !infoModalUser ? `${chat.participants.length} ${t.groups.members}` : (infoModalUser?.phoneNumber || '-')}</p><div className="w-full bg-cream-50 p-4 rounded-xl border border-cream-200 text-center shrink-0"><p className="text-sm text-denim-700 italic">"{chat.type === 'group' && !infoModalUser ? (chat.description || '-') : (infoModalUser?.bio || '-')}"</p></div>{chat.type === 'group' && !infoModalUser && (<div className="mt-4 w-full"><p className="text-xs font-bold text-denim-400 uppercase tracking-wider mb-2 text-center">{t.groups.members}</p><div className="space-y-2 mt-2">{loadingMembers ? <div className="flex justify-center"><Loader2 className="animate-spin text-denim-400" size={20}/></div> : groupMembersInfo.map(m => (<div key={m.id} className="flex items-center gap-3 p-2 hover:bg-cream-50 rounded-lg"><img src={m.avatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}`}/><div className="text-start flex-1 min-w-0 flex items-center gap-1"><p className="text-sm font-semibold text-denim-800 truncate">{m.name}</p>{m.isAdmin && <BadgeCheck size={14} className="text-white fill-blue-500" />}</div>{chat.adminIds?.includes(m.id) && <span className="text-[10px] bg-denim-100 text-denim-600 px-2 py-0.5 rounded-full font-bold">{t.chatWindow.admin}</span>}</div>))}</div></div>)}</div></div></div>)}
+      {showInfoModal && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+        <div className="modern-modal-glow shadow-2xl animate-in zoom-in-95">
+          <div className="bg-white w-full max-w-sm rounded-[21px] flex flex-col max-h-[80vh] overflow-hidden relative">
+            <button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-20 rtl:left-4 rtl:right-auto"><X size={20} /></button>
+            
+            <div className="h-32 bg-denim-700 relative shrink-0">
+              <div className="absolute inset-0 opacity-10 pattern-bg"></div>
+            </div>
+            
+            <div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-10 flex-1 overflow-y-auto custom-scrollbar">
+              <div className="relative group cursor-pointer mb-2" onClick={() => setZoomImage(infoModalUser?.avatar || displayAvatar)}>
+                <img src={infoModalUser?.avatar || displayAvatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-20 relative" />
+              </div>
+              
+              <h2 className="text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">
+                {infoModalUser?.name || chat.name}
+                {((infoModalUser?.isAdmin) || (adminProfile && infoModalUser?.id === adminProfile.id)) && <BadgeCheck size={18} className="text-white fill-blue-500" />}
+              </h2>
+              
+              <p className="text-denim-500 text-sm font-medium mb-4 text-center">
+                {chat.type === 'group' && !infoModalUser ? `${chat.participants.length} ${t.groups.members}` : (infoModalUser?.phoneNumber || '-')}
+              </p>
+              
+              {/* CONTACT SAVING LOGIC (Aligned with Status) */}
+              {infoModalUser && !contactsMap[infoModalUser.id] && (!adminProfile || infoModalUser.id !== adminProfile.id) && (
+                <div className="mb-4 w-full animate-in fade-in">
+                  {!isAddingContact ? (
+                    <button 
+                      onClick={() => {
+                        setNewContactName(infoModalUser.name);
+                        setIsAddingContact(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-denim-600 hover:bg-denim-700 text-white rounded-xl text-sm font-bold shadow-lg transition-all active:scale-95"
+                    >
+                      <UserPlus size={18} /> Tambah Kontak
+                    </button>
+                  ) : (
+                    <div className="bg-cream-50 p-4 rounded-2xl border border-denim-100 w-full">
+                      <p className="text-[10px] text-denim-500 mb-2 font-bold uppercase tracking-wider">Simpan Sebagai:</p>
+                      <input 
+                        type="text" 
+                        value={newContactName} 
+                        onChange={(e) => setNewContactName(e.target.value)} 
+                        className="w-full p-2.5 border border-cream-200 rounded-xl text-sm mb-3 focus:ring-1 focus:ring-denim-500 outline-none shadow-inner" 
+                        placeholder="Nama Kontak" 
+                        autoFocus 
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => setIsAddingContact(false)} className="flex-1 py-2 bg-gray-100 text-denim-600 rounded-xl text-xs font-bold transition-colors hover:bg-gray-200">Batal</button>
+                        <button 
+                          onClick={handleSaveContactModal} 
+                          disabled={savingContact || !newContactName.trim()}
+                          className="flex-1 py-2 bg-denim-600 text-white rounded-xl text-xs font-bold shadow-md transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
+                        >
+                          {savingContact ? <Loader2 size={14} className="animate-spin" /> : "Simpan"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="w-full bg-cream-50 p-4 rounded-xl border border-cream-100 text-center shrink-0 mb-4 shadow-inner">
+                <p className="text-sm text-denim-700 italic">"{chat.type === 'group' && !infoModalUser ? (chat.description || '-') : (infoModalUser?.bio || '-')}"</p>
+              </div>
+
+              {chat.type === 'group' && !infoModalUser && (
+                <div className="mt-2 w-full">
+                  <p className="text-xs font-bold text-denim-400 uppercase tracking-wider mb-2 text-center">{t.groups.members}</p>
+                  <div className="space-y-2 mt-2">
+                    {loadingMembers ? (
+                      <div className="flex justify-center p-4"><Loader2 className="animate-spin text-denim-400" size={20}/></div>
+                    ) : groupMembersInfo.map(m => (
+                      <div key={m.id} className="flex items-center gap-3 p-2.5 hover:bg-cream-50 rounded-xl transition-colors cursor-pointer group" onClick={() => handleOpenUserInfo(m.id)}>
+                        <img src={m.avatar} className="w-9 h-9 rounded-full object-cover shrink-0 border border-cream-200 group-hover:border-denim-300" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}`}/>
+                        <div className="text-start flex-1 min-w-0 flex items-center gap-1">
+                          <p className="text-sm font-semibold text-denim-800 truncate">{m.name}</p>
+                          {m.isAdmin && <BadgeCheck size={14} className="text-white fill-blue-500" />}
+                        </div>
+                        {chat.adminIds?.includes(m.id) && <span className="text-[9px] bg-denim-100 text-denim-600 px-2 py-0.5 rounded-full font-black uppercase">{t.chatWindow.admin}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>)}
+
       {zoomImage && (<div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-0 animate-in fade-in duration-200" onClick={() => setZoomImage(null)}><button className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 text-white/80 hover:text-white z-[101] bg-black/40 rounded-full p-2 rtl:left-4 rtl:right-auto"><X size={28} /></button><img src={zoomImage} className="w-full h-full object-contain pointer-events-none select-none" /></div>)}
       {toastMessage && (<div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-denim-800 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-2"><CheckCircle2 size={18} className="text-green-400" /><span className="text-sm font-medium">{toastMessage}</span></div>)}
       {showContactPicker && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[70vh]"><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-denim-900">{t.chatWindow.attach.contact}</h3><button onClick={() => setShowContactPicker(false)}><X size={20} className="text-denim-500"/></button></div><div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white"><div className="space-y-1">{myContacts.map(c => (<div key={c.id} onClick={() => handleSendContact(c)} className="flex items-center gap-3 p-3 hover:bg-cream-100 rounded-xl cursor-pointer"><img src={c.avatar} className="w-10 h-10 rounded-full shrink-0" /><div><p className="font-bold text-sm text-denim-900 flex items-center gap-1">{c.savedName}</p><p className="text-xs text-denim-500">{c.phoneNumber}</p></div></div>))}</div></div></div></div>)}

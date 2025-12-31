@@ -126,7 +126,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-3">
             <button onClick={onOpenMenu} className="hidden md:block p-2 -ms-2 text-denim-600 hover:bg-cream-200 rounded-full transition-colors"><Menu size={24} /></button>
-            <h1 className="text-xl font-bold text-denim-900 tracking-tight font-sans">Hud-Hud</h1>
+            <h1 className="text-xl font-black text-denim-700 tracking-tight font-sans">Hud-Hud</h1>
           </div>
           <div className="relative">
              {isSelectionMode ? (
