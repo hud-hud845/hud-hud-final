@@ -14,6 +14,7 @@ import { sendSystemNotification } from '../utils/notificationHelper';
 import { requestFcmToken, onMessageListener } from '../utils/fcm';
 import { Bell, MessageSquare, Users, Activity, User as UserIcon, Settings, Radio } from 'lucide-react';
 import { ref, onValue } from 'firebase/database';
+import { InstallPrompt } from './InstallPrompt';
 
 export interface AppSettings {
   wallpaper: string; 
@@ -266,6 +267,9 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900 justify-start" dir={isRtl ? 'rtl' : 'ltr'}>
+      {/* Install Prompt for Desktop/iOS */}
+      <InstallPrompt />
+
       {showPermissionBanner && (
         <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md animate-in slide-in-from-top-full duration-300 pt-safe">
            <div className="flex items-center gap-3">

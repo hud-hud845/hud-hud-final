@@ -1,20 +1,27 @@
+
 <!DOCTYPE html>
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="https://i.ibb.co.com/pvbrH5Rm/favicon.png" />
-    <link rel="apple-touch-icon" href="https://i.ibb.co.com/pvbrH5Rm/favicon.png">
-    <link rel="manifest" href="/manifest.json" />
-    
+    <link rel="icon" type="image/png" href="/icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
+    <!-- PWA Primary Meta Tags -->
     <meta name="theme-color" content="#154c79" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    
+    <!-- Trick supaya bar notifikasi transparan & menyatu di iOS -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Hud-Hud" />
-    <meta name="application-name" content="Hud-Hud" />
     
-    <title>Hud-Hud Web</title>
+    <!-- Gunakan satu icon 512x512 yang sama -->
+    <link rel="apple-touch-icon" href="/icon.png" />
+    
+    <!-- Link Manifest PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <title>Hud-Hud Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -35,8 +42,8 @@
                 400: '#36b2fa',
                 500: '#0c9aeb',
                 600: '#007ac9',
-                700: '#154c79',
-                800: '#0a2e4d',
+                700: '#154c79', 
+                800: '#0a2e4d', 
                 900: '#06192b',
               },
             },
@@ -50,6 +57,7 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+      /* Custom Scrollbar */
       .custom-scrollbar::-webkit-scrollbar {
         width: 5px;
       }
@@ -73,35 +81,41 @@
         background-color: #f5f2eb;
         font-family: 'Inter', sans-serif;
         overscroll-behavior-y: none;
+        /* Padding otomatis untuk area Notch/Bar Notifikasi */
+        padding-top: env(safe-area-inset-top);
         padding-bottom: env(safe-area-inset-bottom);
+        -webkit-tap-highlight-color: transparent;
+        height: 100vh;
+        height: -webkit-fill-available;
       }
       
-      .pt-safe { padding-top: env(safe-area-inset-top); }
-      .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-
+      #root {
+        height: 100%;
+      }
+      
       .pattern-bg {
         background-color: #fdfbf7;
         background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23154c79' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
       }
     </style>
-    <script type="importmap">
-    {
-      "imports": {
-        "react/": "https://aistudiocdn.com/react@^19.2.1/",
-        "react": "https://aistudiocdn.com/react@^19.2.1",
-        "vite": "https://aistudiocdn.com/vite@^7.2.7",
-        "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
-        "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-        "date-fns": "https://aistudiocdn.com/date-fns@^4.1.0",
-        "lucide-react": "https://aistudiocdn.com/lucide-react@^0.559.0",
-        "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2"
-      }
-    }
-    </script>
-    <link rel="stylesheet" href="/index.css">
-  </head>
-  <body class="bg-cream-100 text-denim-800 overflow-hidden h-screen w-screen">
-    <div id="root" class="h-full w-full"></div>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.7",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "date-fns": "https://aistudiocdn.com/date-fns@^4.1.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.559.0",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-cream-100 text-denim-800 overflow-hidden">
+    <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

@@ -1,24 +1,24 @@
+
 {
-  "short_name": "Hud-Hud",
   "name": "Hud-Hud Messenger",
-  "description": "Aplikasi Chat Hud-Hud",
+  "short_name": "Hud-Hud",
+  "description": "Realtime chat app with denim & cream theme",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#154c79",
+  "theme_color": "#154c79",
   "icons": [
     {
-      "src": "https://i.ibb.co.com/pvbrH5Rm/favicon.png",
+      "src": "/icon.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
-      "src": "https://i.ibb.co.com/pvbrH5Rm/favicon.png",
+      "src": "/icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     }
-  ],
-  "start_url": "/",
-  "display": "standalone",
-  "orientation": "portrait",
-  "theme_color": "#154c79",
-  "background_color": "#f5f2eb"
+  ]
 }
