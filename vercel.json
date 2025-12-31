@@ -1,5 +1,14 @@
 {
+  "cleanUrls": true,
   "rewrites": [
+    {
+      "source": "/favicon.png",
+      "destination": "/favicon.png"
+    },
+    {
+      "source": "/manifest.json",
+      "destination": "/manifest.json"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
