@@ -16,7 +16,7 @@ import {
   reauthenticateWithCredential,
   deleteUser
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { User } from '../types';
 import { uploadImageToCloudinary } from '../services/cloudinary';
@@ -44,8 +44,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// KONFIGURASI ADMIN
-const ADMIN_EMAIL = 'admin.h2@gmail.com';
+const ADMIN_STANDARD = 'admin.h2@gmail.com';
+const ADMIN_PRO = 'admin.h2h@gmail.com';
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -55,7 +55,7 @@ export const useAuth = () => {
   return context;
 };
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -64,61 +64,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error("Gagal mengatur persistensi sesi:", error);
     });
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        try {
-          const userDocRef = doc(db, 'users', firebaseUser.uid);
-          // Menggunakan try-catch di sini agar jika rules belum siap, app tidak crash total
-          try {
-            const userSnapshot = await getDoc(userDocRef);
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        
+        const unsubDoc = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const userData = docSnap.data();
+            const isStandardAdmin = firebaseUser.email === ADMIN_STANDARD;
+            const isSuperProAdmin = firebaseUser.email === ADMIN_PRO;
             
-            // LOGIKA KHUSUS ADMIN
-            const isAdminEmail = firebaseUser.email === ADMIN_EMAIL;
+            setCurrentUser({ 
+              id: firebaseUser.uid, 
+              ...userData, 
+              isAdmin: isStandardAdmin || isSuperProAdmin || userData.isAdmin,
+              isProAdmin: isSuperProAdmin // Field khusus Super Admin Pro
+            } as User & { isProAdmin: boolean });
             
-            if (isAdminEmail) {
-              if (userSnapshot.exists()) {
-                const existingData = userSnapshot.data();
-                await updateDoc(userDocRef, { 
-                  status: 'online',
-                  isAdmin: true,
-                  lastSeen: new Date().toISOString()
-                });
-                setCurrentUser({ id: firebaseUser.uid, ...existingData, isAdmin: true } as User);
-              } else {
-                const newAdmin: User = {
-                   id: firebaseUser.uid,
-                   name: 'Hud-Hud', 
-                   email: ADMIN_EMAIL,
-                   phoneNumber: '019490708',
-                   bio: 'Official Admin Hud-Hud',
-                   avatar: 'https://ui-avatars.com/api/?name=Hud-Hud&background=154c79&color=fff&size=256',
-                   status: 'online',
-                   lastSeen: new Date().toISOString(),
-                   isAdmin: true
-                };
-                await setDoc(userDocRef, newAdmin);
-                setCurrentUser(newAdmin);
-              }
-            } else {
-               // USER BIASA
-               if (userSnapshot.exists()) {
-                  setCurrentUser({ id: firebaseUser.uid, ...userSnapshot.data() } as User);
-                  updateDoc(userDocRef, { status: 'online' }).catch(console.error);
-               }
-            }
-          } catch (docError: any) {
-            console.error("Gagal mengambil data user (Cek Firestore Rules):", docError);
-            if (docError.code === 'permission-denied') {
-               // Jangan set loading false dulu jika ini critical
+            if (userData.status !== 'online') {
+              updateDoc(userDocRef, { status: 'online' }).catch(() => {});
             }
           }
-        } catch (error) {
-          console.error("Error general auth:", error);
-        }
+          setLoading(false);
+        }, (error) => {
+          setLoading(false);
+        });
+
+        return () => unsubDoc();
       } else {
         setCurrentUser(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return unsubscribe;
@@ -130,7 +106,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setPersistence(auth, browserLocalPersistence);
       await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error("Login failed", error);
       throw error;
     }
   };
@@ -147,53 +122,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // --- LOGIKA UTAMA: PENDAFTARAN ---
   const registerUser = async (data: RegisterData) => {
     const { email, password, name, phoneNumber, bio, avatarFile } = data;
     let userCredential;
 
     try {
-      // LANGKAH 1: Buat Akun Auth. Otomatis Login.
       userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
 
-      // LANGKAH 2: Cek Duplikasi Nomor HP
-      // Kita bungkus ini dengan try-catch spesifik untuk menangani masalah Rules
       try {
         const usersRef = collection(db, 'users');
         const q = query(usersRef, where('phoneNumber', '==', phoneNumber));
         const querySnapshot = await getDocs(q);
-
         const isDuplicate = !querySnapshot.empty && querySnapshot.docs.some(doc => doc.id !== uid);
-        if (isDuplicate) {
-          throw new Error("nomor_hp_duplicate");
-        }
+        if (isDuplicate) throw new Error("nomor_hp_duplicate");
       } catch (dbError: any) {
-        // Jika errornya adalah DUPLICATE yang kita throw di atas, lempar lagi ke catch utama
         if (dbError.message === "nomor_hp_duplicate") throw dbError;
-
-        // Jika errornya PERMISSION DENIED, berarti developer belum setup Rules di Console
-        if (dbError.code === 'permission-denied') {
-           console.error("CRITICAL: Firestore Rules memblokir pembacaan. Pastikan Rules sudah dipublish.");
-           throw new Error("Izin Database Ditolak. Harap Admin update Firestore Rules di Console.");
-        }
-        
-        // Error lain (misal koneksi), kita lempar
         throw dbError;
       }
 
-      // LANGKAH 3: Upload Avatar
       let avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=154c79&color=fff&size=256`;
       if (avatarFile) {
-        try { 
-            avatarUrl = await uploadImageToCloudinary(avatarFile); 
-        } catch (e) { 
-            console.error("Gagal upload avatar:", e); 
-        }
+        try { avatarUrl = await uploadImageToCloudinary(avatarFile); } catch (e) {}
       }
 
-      // LANGKAH 4: Simpan Data
-      const newUser: User = {
+      const newUser: any = {
         id: uid,
         name,
         email,
@@ -202,40 +155,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         avatar: avatarUrl,
         status: 'online',
         lastSeen: new Date().toISOString(),
-        isAdmin: false
+        isAdmin: email === ADMIN_STANDARD || email === ADMIN_PRO,
+        isProfessional: false
       };
 
       await setDoc(doc(db, 'users', uid), newUser);
-      setCurrentUser(newUser);
-
     } catch (error: any) {
-      // ROLLBACK: Hapus akun Auth jika gagal di langkah database
-      if (userCredential && userCredential.user) {
-         try { await deleteUser(userCredential.user); } catch (e) {}
-      }
-
-      if (error.message === "nomor_hp_duplicate") {
-          throw new Error("Nomor HP telah digunakan oleh pengguna lain.");
-      }
-      if (error.code === 'auth/email-already-in-use') {
-        throw new Error("Email ini sudah terdaftar. Silakan login.");
-      }
-      
-      // Tampilkan pesan error asli jika itu masalah permission
-      if (error.message.includes("Izin Database")) {
-        throw error;
-      }
-
-      console.error("Register Error:", error);
-      throw new Error("Gagal mendaftar. " + (error.message || "Periksa koneksi internet."));
+      if (userCredential && userCredential.user) try { await deleteUser(userCredential.user); } catch (e) {}
+      if (error.message === "nomor_hp_duplicate") throw new Error("Nomor HP telah digunakan.");
+      if (error.code === 'auth/email-already-in-use') throw new Error("Email sudah terdaftar.");
+      throw new Error("Gagal mendaftar: " + error.message);
     }
   };
 
   const logout = async () => {
     try {
       if (currentUser) {
-        const userDocRef = doc(db, 'users', currentUser.id);
-        await updateDoc(userDocRef, { status: 'offline', lastSeen: new Date().toISOString() });
+        await updateDoc(doc(db, 'users', currentUser.id), { status: 'offline', lastSeen: new Date().toISOString() });
       }
       await signOut(auth);
     } catch (error) {
@@ -245,25 +181,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateProfile = async (name: string, bio: string, phoneNumber: string, avatar?: string) => {
     if (!currentUser) return;
-    
-    if (phoneNumber !== currentUser.phoneNumber) {
-       const usersRef = collection(db, 'users');
-       const q = query(usersRef, where('phoneNumber', '==', phoneNumber));
-       const querySnapshot = await getDocs(q);
-       const isDuplicate = querySnapshot.docs.some(d => d.id !== currentUser.id);
-       if (isDuplicate) throw new Error("Nomor HP telah digunakan.");
-    }
-
     try {
       const userDocRef = doc(db, 'users', currentUser.id);
       const updateData: any = { name, bio, phoneNumber };
       if (avatar) updateData.avatar = avatar;
-      
       await updateDoc(userDocRef, updateData);
-      setCurrentUser(prev => prev ? { ...prev, ...updateData } : null);
-      
     } catch (error) {
-      console.error("Update profile failed", error);
       throw error;
     }
   };
@@ -274,15 +197,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const credential = EmailAuthProvider.credential(auth.currentUser.email || currentUser.email || '', currentPassword);
         await reauthenticateWithCredential(auth.currentUser, credential);
         await updateEmail(auth.currentUser, newEmail);
-        
-        const userDocRef = doc(db, 'users', currentUser.id);
-        await updateDoc(userDocRef, { email: newEmail });
-        
-        setCurrentUser(prev => prev ? { ...prev, email: newEmail } : null);
+        await updateDoc(doc(db, 'users', currentUser.id), { email: newEmail });
       } catch (error: any) {
-        if (error.code === 'auth/wrong-password') throw new Error("Password salah.");
-        if (error.code === 'auth/email-already-in-use') throw new Error("Email sudah digunakan.");
-        throw new Error("Gagal update email.");
+        throw error;
       }
     }
   };
@@ -294,8 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await reauthenticateWithCredential(auth.currentUser, credential);
         await updatePassword(auth.currentUser, newPassword);
       } catch (error: any) {
-        if (error.code === 'auth/wrong-password') throw new Error("Password salah.");
-        throw new Error("Gagal update password.");
+        throw error;
       }
     }
   };

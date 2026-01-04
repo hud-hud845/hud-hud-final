@@ -12,7 +12,7 @@ import { translations } from '../utils/translations';
 import { cleanupExpiredMessages, cleanupExpiredStatuses, cleanupExpiredNotifications } from '../services/cleanup';
 import { sendSystemNotification } from '../utils/notificationHelper';
 import { requestFcmToken, onMessageListener } from '../utils/fcm';
-import { Bell, MessageSquare, Users, Activity, User as UserIcon, Settings, Radio } from 'lucide-react';
+import { Bell, MessageSquare, Users, Activity, User as UserIcon, Settings, Radio, ShieldCheck } from 'lucide-react';
 import { ref, onValue } from 'firebase/database';
 import { InstallPrompt } from './InstallPrompt';
 
@@ -29,7 +29,7 @@ export interface AppSettings {
 }
 
 export const Layout: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser } = useAuth() as any;
   const [selectedChat, setSelectedChat] = useState<ChatPreview | undefined>(undefined);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>('chats');
@@ -62,9 +62,7 @@ export const Layout: React.FC = () => {
           setShowPermissionBanner(true);
         }
       }
-    } catch (e) {
-      console.warn("Notification API not supported in this environment");
-    }
+    } catch (e) {}
   }, []);
 
   const handleEnableNotifications = () => {
@@ -73,10 +71,7 @@ export const Layout: React.FC = () => {
       if (currentUser) {
         try {
           const token = await requestFcmToken(currentUser.id);
-          if (token) console.log("Notifikasi aktif.");
-        } catch (error) {
-          console.error("FCM Error:", error);
-        }
+        } catch (error) {}
       }
     }, 100); 
   };
@@ -87,12 +82,6 @@ export const Layout: React.FC = () => {
         cleanupExpiredStatuses();
         cleanupExpiredNotifications(currentUser.id);
         
-        try {
-          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-              requestFcmToken(currentUser.id).catch(err => console.error(err));
-          }
-        } catch (e) {}
-
         const qChats = query(collection(db, 'chats'), where('participants', 'array-contains', currentUser.id));
         const unsubChats = onSnapshot(qChats, (snapshot) => {
           let total = 0;
@@ -267,7 +256,6 @@ export const Layout: React.FC = () => {
 
   return (
     <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900 justify-start" dir={isRtl ? 'rtl' : 'ltr'}>
-      {/* Install Prompt for Desktop/iOS */}
       <InstallPrompt />
 
       {showPermissionBanner && (
@@ -283,7 +271,6 @@ export const Layout: React.FC = () => {
         </div>
       )}
 
-      {/* Sidebar Panel - Left Docked */}
       <div className={`relative flex-col border-e border-cream-200 bg-cream-100 transition-all duration-300 ease-in-out z-20 shrink-0 ${selectedChat ? 'hidden md:flex' : 'flex'} w-full md:w-[380px] lg:w-[420px]`}>
         <div className="hidden md:block h-full">
             <SidebarMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} currentUser={currentUser} onNavigate={handleMenuNavigation} activeView={currentView} appSettings={appSettings} totalUnreadMessages={totalUnreadMessages} />
@@ -295,55 +282,66 @@ export const Layout: React.FC = () => {
           renderSidebarView(currentView, handleBackToChats, handleStartChat, (c) => { handleSelectChat(c); setCurrentView('chats'); }, appSettings, updateAppSettings, contactsMap, adminProfile, handleMenuNavigation, setTargetStatusId, targetStatusId)
         )}
 
-        {/* Mobile Footer Navigation */}
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-cream-200 flex justify-between items-end px-2 py-2 z-50 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] h-16 pb-safe">
-           <button onClick={() => setCurrentView('chats')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'chats' ? 'text-denim-700' : 'text-denim-400'}`}>
-             <MessageSquare size={22} className={currentView === 'chats' ? 'fill-denim-100/30' : ''} />
-             {totalUnreadMessages > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}
-             <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Obrolan</span>
-           </button>
-           
-           {currentUser.isAdmin ? (
-             <button onClick={() => setCurrentView('broadcast')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'broadcast' ? 'text-denim-700' : 'text-denim-400'}`}>
-               <Radio size={22} className={currentView === 'broadcast' ? 'fill-denim-100/30' : ''} />
-               <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Siaran</span>
-             </button>
+           {currentUser.isProAdmin ? (
+              // FOOTER KHUSUS SUPER ADMIN PRO
+              <>
+                <button onClick={() => setCurrentView('admin_professional_dashboard')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'admin_professional_dashboard' ? 'text-denim-700' : 'text-denim-400'}`}>
+                  <ShieldCheck size={22} className={currentView === 'admin_professional_dashboard' ? 'fill-denim-100/30' : ''} />
+                  <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Pro Admin</span>
+                </button>
+                <button onClick={() => setCurrentView('contacts')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'contacts' ? 'text-denim-700' : 'text-denim-400'}`}>
+                  <Users size={22} />
+                  <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">User DB</span>
+                </button>
+                <button onClick={() => setCurrentView('settings')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'settings' ? 'text-denim-700' : 'text-denim-400'}`}>
+                  <Settings size={22} />
+                  <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Sistem</span>
+                </button>
+              </>
            ) : (
-             <button onClick={() => setCurrentView('groups')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'groups' ? 'text-denim-700' : 'text-denim-400'}`}>
-               <Users size={22} className={currentView === 'groups' ? 'fill-denim-100/30' : ''} />
-               <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Grup</span>
-             </button>
+             // FOOTER STANDARD
+             <>
+               <button onClick={() => setCurrentView('chats')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'chats' ? 'text-denim-700' : 'text-denim-400'}`}>
+                 <MessageSquare size={22} className={currentView === 'chats' ? 'fill-denim-100/30' : ''} />
+                 {totalUnreadMessages > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}
+                 <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Obrolan</span>
+               </button>
+               
+               {currentUser.isAdmin ? (
+                 <button onClick={() => setCurrentView('broadcast')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'broadcast' ? 'text-denim-700' : 'text-denim-400'}`}>
+                   <Radio size={22} className={currentView === 'broadcast' ? 'fill-denim-100/30' : ''} />
+                   <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Siaran</span>
+                 </button>
+               ) : (
+                 <button onClick={() => setCurrentView('groups')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'groups' ? 'text-denim-700' : 'text-denim-400'}`}>
+                   <Users size={22} className={currentView === 'groups' ? 'fill-denim-100/30' : ''} />
+                   <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Grup</span>
+                 </button>
+               )}
+               
+               <button onClick={() => setCurrentView('status')} className={`flex flex-col items-center justify-center flex-1 transition-all duration-300`}>
+                 <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg border-2 mb-0.5 transition-all ${currentView === 'status' ? 'bg-denim-700 text-white border-denim-100 scale-110 -translate-y-1' : 'bg-denim-600 text-white/90 border-denim-500/50 scale-100'}`}>
+                   <Activity size={24} strokeWidth={2.5} />
+                 </div>
+                 <span className={`text-[10px] font-bold uppercase tracking-tighter ${currentView === 'status' ? 'text-denim-800' : 'text-denim-400'}`}>Status</span>
+               </button>
+               
+               <button onClick={() => setCurrentView('notifications')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'notifications' ? 'text-denim-700' : 'text-denim-400'}`}>
+                 <Bell size={22} className={currentView === 'notifications' ? 'fill-denim-100/30' : ''} />
+                 {unreadNotifCount > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{unreadNotifCount}</span>}
+                 <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Notif</span>
+               </button>
+               
+               <button onClick={() => setCurrentView('contacts')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'contacts' ? 'text-denim-700' : 'text-denim-400'}`}>
+                 <UserIcon size={22} className={currentView === 'contacts' ? 'fill-denim-100/30' : ''} />
+                 <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Kontak</span>
+               </button>
+             </>
            )}
-           
-           {/* Status Icon */}
-           <button onClick={() => setCurrentView('status')} className={`flex flex-col items-center justify-center flex-1 transition-all duration-300`}>
-             <div className={`
-               w-12 h-12 rounded-full flex items-center justify-center shadow-lg border-2 mb-0.5 transition-all
-               ${currentView === 'status' 
-                 ? 'bg-denim-700 text-white border-denim-100 scale-110 -translate-y-1' 
-                 : 'bg-denim-600 text-white/90 border-denim-500/50 scale-100'
-               }
-               ring-2 ring-offset-2 ring-transparent
-             `}>
-               <Activity size={24} strokeWidth={2.5} />
-             </div>
-             <span className={`text-[10px] font-bold uppercase tracking-tighter ${currentView === 'status' ? 'text-denim-800' : 'text-denim-400'}`}>Status</span>
-           </button>
-           
-           <button onClick={() => setCurrentView('notifications')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'notifications' ? 'text-denim-700' : 'text-denim-400'}`}>
-             <Bell size={22} className={currentView === 'notifications' ? 'fill-denim-100/30' : ''} />
-             {unreadNotifCount > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{unreadNotifCount}</span>}
-             <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Notif</span>
-           </button>
-           
-           <button onClick={() => setCurrentView('contacts')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'contacts' ? 'text-denim-700' : 'text-denim-400'}`}>
-             <UserIcon size={22} className={currentView === 'contacts' ? 'fill-denim-100/30' : ''} />
-             <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Kontak</span>
-           </button>
         </nav>
       </div>
 
-      {/* Main Content Area */}
       <div className={`flex-1 flex flex-col bg-cream-50 relative z-10 ${!selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {selectedChat ? (
           <ChatWindow chat={selectedChat} currentUser={currentUser} onBack={handleBackToChats} contactsMap={contactsMap} getDisplayName={getDisplayName} onStartChat={handleStartChat} appSettings={appSettings} adminProfile={adminProfile} />

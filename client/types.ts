@@ -3,62 +3,73 @@ export interface User {
   id: string;
   name: string;
   email?: string;
-  phoneNumber?: string; // Field baru untuk Nomor HP
+  phoneNumber?: string; 
   avatar: string;
   bio?: string;
+  address?: string; // Field baru untuk alamat lengkap
   status: 'online' | 'offline' | 'typing';
   lastSeen?: string;
-  isAdmin?: boolean; // Admin Flag
+  isAdmin?: boolean;
+  isProfessional?: boolean; // Status apakah dashboard pro aktif
+}
+
+export interface ProfessionalApplication {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  userAvatar: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: any;
+}
+
+export interface StarRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userPhone: string;
+  amount: number;
+  status: 'pending' | 'completed' | 'failed';
+  createdAt: any;
 }
 
 export interface Contact {
-  id: string;        // ID dokumen di sub-collection contacts
-  uid: string;       // UID asli pengguna tersebut (referensi ke users collection)
-  savedName: string; // Nama yang disimpan oleh user (bisa beda dengan nama asli user)
+  id: string;        
+  uid: string;       
+  savedName: string; 
   phoneNumber: string;
-  avatar: string;    // Cache avatar untuk tampilan cepat
+  avatar: string;    
 }
 
 export interface Message {
   id: string;
   senderId: string;
-  content: string; // Plain text content
-  timestamp: any; // Firestore Timestamp or Date
+  content: string; 
+  timestamp: any; 
   type: 'text' | 'image' | 'audio' | 'document' | 'location' | 'contact';
-  
-  // File & Media Props
   fileUrl?: string;
   fileName?: string;
-  fileSize?: string; // e.g., "2.5 MB"
+  fileSize?: string; 
   mimeType?: string;
-  
-  // Audio Props
-  duration?: number; // in seconds
-  
-  // Location Props
+  duration?: number; 
   location?: {
     latitude: number;
     longitude: number;
   };
-  
-  // Contact Props
   contact?: {
     uid: string;
     name: string;
     phoneNumber: string;
     avatar: string;
   };
-
-  // Reply Props
   replyTo?: {
     id: string;
     senderName: string;
-    content: string; // Preview text
+    content: string; 
     type: 'text' | 'image' | 'audio' | 'document' | 'location' | 'contact';
   };
-
   status: 'sent' | 'delivered' | 'read';
-  readBy?: string[]; // Array of User IDs who have read this message
+  readBy?: string[]; 
 }
 
 export interface Comment {
@@ -68,7 +79,7 @@ export interface Comment {
   userAvatar: string;
   text: string;
   createdAt: any;
-  isAdmin?: boolean; // Untuk badge di komentar
+  isAdmin?: boolean; 
   replyTo?: {
     userName: string;
     text: string;
@@ -81,25 +92,27 @@ export interface Status {
   author: {
     name: string;
     avatar: string;
-    isAdmin?: boolean; // Menyimpan status admin saat pembuatan
+    isAdmin?: boolean; 
   };
   content?: string;
   imageUrl?: string;
-  likes: string[]; // Array of UserIDs
+  likes: string[]; 
   commentsCount: number;
+  stars?: number; 
+  views?: number; 
   createdAt: any;
-  expiresAt: any; // 2x24 jam
+  expiresAt: any; 
 }
 
 export interface Notification {
   id: string;
-  recipientId: string; // Pemilik Status atau Pemilik Komentar yg dibalas
-  senderId: string;    // Orang yang like/komen/reply
+  recipientId: string; 
+  senderId: string;    
   senderName: string;
   senderAvatar: string;
-  type: 'like' | 'comment' | 'reply'; // Added 'reply' type
-  statusId: string;    // ID Status terkait
-  previewText?: string; // Isi komentar (opsional)
+  type: 'like' | 'comment' | 'reply'; 
+  statusId: string;    
+  previewText?: string; 
   createdAt: any;
   read: boolean;
   expiresAt: any;
@@ -108,19 +121,39 @@ export interface Notification {
 export interface ChatPreview {
   id: string;
   type: 'direct' | 'group';
-  participants: string[]; // Array of User IDs
-  adminIds?: string[]; // Array of Admin User IDs (Only for groups)
-  name: string; // Display name for the chat (Raw from DB)
-  description?: string; // Group description
+  participants: string[]; 
+  adminIds?: string[]; 
+  name: string; 
+  description?: string; 
   avatar: string;
   lastMessage: string;
   lastMessageType?: 'text' | 'image' | 'audio' | 'document' | 'location' | 'contact';
-  unreadCount?: number; // Legacy support
-  unreadCounts?: Record<string, number>; // Map userId -> number of unread messages
-  updatedAt: any; // Firestore Timestamp
+  unreadCount?: number; 
+  unreadCounts?: Record<string, number>; 
+  updatedAt: any; 
   createdAt?: any;
   isPinned?: boolean;
-  typing?: Record<string, any>; // Map userId -> Timestamp (Last typed time)
+  typing?: Record<string, any>; 
 }
 
-export type ViewState = 'chats' | 'status' | 'my_status' | 'groups' | 'contacts' | 'notifications' | 'settings' | 'help' | 'profile' | 'broadcast';
+export interface PayoutAccount {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  isDefault?: boolean;
+}
+
+export interface Transaction {
+  id: string;
+  userId?: string;
+  userName?: string;
+  userPhone?: string;
+  amount: number;
+  status: 'pending' | 'success' | 'failed';
+  createdAt: any;
+  bankName: string;
+  accountNumber?: string;
+}
+
+export type ViewState = 'chats' | 'status' | 'my_status' | 'groups' | 'contacts' | 'notifications' | 'settings' | 'help' | 'profile' | 'broadcast' | 'professional_dashboard' | 'admin_professional_dashboard';

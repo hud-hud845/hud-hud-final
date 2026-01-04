@@ -101,7 +101,10 @@ export const ChatList: React.FC<ChatListProps> = ({
     if (chat.type === 'group') return chat.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.name)}&background=random`;
     const partnerId = chat.participants.find(p => p !== currentUser?.id);
     if (!partnerId) return chat.avatar;
-    if (adminProfile && partnerId === adminProfile.id) return adminProfile.name;
+    
+    // PERBAIKAN: Kembalikan adminProfile.avatar, bukan adminProfile.name
+    if (adminProfile && partnerId === adminProfile.id) return adminProfile.avatar;
+    
     let avatarUrl = contactsMap[partnerId]?.avatar || unknownUsersCache[partnerId]?.avatar || chat.avatar;
     if (!avatarUrl || avatarUrl.includes('ui-avatars.com')) return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random&color=fff`;
     return avatarUrl;

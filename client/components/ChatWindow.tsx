@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 import { doc, updateDoc, increment, getDoc, writeBatch, arrayUnion, addDoc, collection, onSnapshot as onFirestoreSnapshot, serverTimestamp } from 'firebase/firestore';
 import { ref, push, set, onValue, serverTimestamp as rtdbTimestamp, remove, update } from 'firebase/database';
 import { db, rtdb } from '../services/firebase';
-import { uploadFileToCloudinary, uploadImageToCloudinary } from '../services/cloudinary';
+import { uploadMedia } from '../services/storageService'; // MENGGUNAKAN SERVICE BARU
 import { AppSettings } from './Layout';
 import { translations } from '../utils/translations';
 
@@ -51,7 +51,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [infoModalUser, setInfoModalUser] = useState<User | null>(null);
   
-  // States for adding contact in modal
   const [isAddingContact, setIsAddingContact] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [savingContact, setSavingContact] = useState(false);
@@ -69,12 +68,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showContactPicker, setShowContactPicker] = useState(false);
   const [myContacts, setMyContacts] = useState<Contact[]>([]);
   
-  // Link & Video States
   const [pendingExternalLink, setPendingExternalLink] = useState<string | null>(null);
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [isVideoZoomed, setIsVideoZoomed] = useState(false);
 
-  // Voice Note States
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -319,11 +316,45 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const toggleSelectionMode = () => { setIsSelectionMode(!isSelectionMode); setSelectedMessageIds(new Set()); setShowHeaderMenu(false); };
   const handleReply = (msg: Message) => { setReplyingTo(msg); setActiveMessageMenu(null); };
 
-  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { const file = e.target.files[0]; setIsUploading(true); setUploadProgress(t.common.processing); try { const url = await uploadImageToCloudinary(file); await handleSendMessage('image', '', { fileUrl: url, fileName: file.name }); } finally { setIsUploading(false); setUploadProgress(''); } } };
-  const handleDocSelect = async (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { const file = e.target.files[0]; setIsUploading(true); setUploadProgress(t.common.processing); try { const url = await uploadFileToCloudinary(file, 'auto'); const size = (file.size / 1024 / 1024).toFixed(2) + " MB"; await handleSendMessage('document', '', { fileUrl: url, fileName: file.name, fileSize: size, mimeType: file.type }); } finally { setIsUploading(false); setUploadProgress(''); } } };
+  // INTEGRASI STORAGE FAILOVER UNTUK GAMBAR CHAT
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => { 
+    if (e.target.files && e.target.files[0]) { 
+      const file = e.target.files[0]; 
+      setIsUploading(true); 
+      try { 
+        const url = await uploadMedia(file, 'chat', (p) => setUploadProgress(p)); 
+        await handleSendMessage('image', '', { fileUrl: url, fileName: file.name }); 
+      } catch (err) {
+        alert("Gagal mengunggah gambar.");
+      } finally { 
+        setIsUploading(false); 
+        setUploadProgress(''); 
+      } 
+    } 
+  };
+
+  // INTEGRASI STORAGE FAILOVER UNTUK DOKUMEN CHAT
+  const handleDocSelect = async (e: React.ChangeEvent<HTMLInputElement>) => { 
+    if (e.target.files && e.target.files[0]) { 
+      const file = e.target.files[0]; 
+      setIsUploading(true); 
+      try { 
+        const url = await uploadMedia(file, 'chat', (p) => setUploadProgress(p)); 
+        const size = (file.size / 1024 / 1024).toFixed(2) + " MB"; 
+        await handleSendMessage('document', '', { fileUrl: url, fileName: file.name, fileSize: size, mimeType: file.type }); 
+      } catch (err) {
+        alert("Gagal mengunggah dokumen.");
+      } finally { 
+        setIsUploading(false); 
+        setUploadProgress(''); 
+      } 
+    } 
+  };
+
   const handleSendLocation = () => { if (!navigator.geolocation) return; setIsUploading(true); setUploadProgress(t.common.processing); setShowAttachMenu(false); navigator.geolocation.getCurrentPosition((pos) => { handleSendMessage('location', '', { location: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } }).finally(() => { setIsUploading(false); setUploadProgress(""); }); }, () => { setIsUploading(false); setUploadProgress(""); }, { enableHighAccuracy: true, timeout: 15000 }); };
   const handleSendContact = (contact: Contact) => { handleSendMessage('contact', '', { contact: { uid: contact.uid, name: contact.savedName, phoneNumber: contact.phoneNumber, avatar: contact.avatar } }); setShowContactPicker(false); };
   
+  // INTEGRASI STORAGE FAILOVER UNTUK VOICE NOTE
   const startRecording = async () => { 
     try { 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
@@ -334,8 +365,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       mediaRecorder.onstop = async () => { 
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' }); 
         const audioFile = new File([audioBlob], `vn_${Date.now()}.webm`, { type: 'audio/webm' }); 
-        setIsUploading(true); setUploadProgress(t.common.processing); 
-        try { const url = await uploadFileToCloudinary(audioFile, 'audio'); await handleSendMessage('audio', '', { fileUrl: url, duration: recordingDuration }); } catch (err) { alert("Gagal mengirim Voice Note."); } finally { setIsUploading(false); setUploadProgress(''); } 
+        setIsUploading(true); 
+        try { 
+          const url = await uploadMedia(audioFile, 'chat', (p) => setUploadProgress(p)); 
+          await handleSendMessage('audio', '', { fileUrl: url, duration: recordingDuration }); 
+        } catch (err) { 
+          alert("Gagal mengirim Voice Note."); 
+        } finally { 
+          setIsUploading(false); 
+          setUploadProgress(''); 
+        } 
         stream.getTracks().forEach(track => track.stop()); 
       }; 
       mediaRecorder.start(); setIsRecording(true); setRecordingDuration(0); 
@@ -598,7 +637,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                 {chat.type === 'group' && !infoModalUser ? `${chat.participants.length} ${t.groups.members}` : (infoModalUser?.phoneNumber || '-')}
               </p>
               
-              {/* CONTACT SAVING LOGIC (Aligned with Status) */}
               {infoModalUser && !contactsMap[infoModalUser.id] && (!adminProfile || infoModalUser.id !== adminProfile.id) && (
                 <div className="mb-4 w-full animate-in fade-in">
                   {!isAddingContact ? (
@@ -667,7 +705,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {zoomImage && (<div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-0 animate-in fade-in duration-200" onClick={() => setZoomImage(null)}><button className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 text-white/80 hover:text-white z-[101] bg-black/40 rounded-full p-2 rtl:left-4 rtl:right-auto"><X size={28} /></button><img src={zoomImage} className="w-full h-full object-contain pointer-events-none select-none" /></div>)}
       {toastMessage && (<div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-denim-800 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-2"><CheckCircle2 size={18} className="text-green-400" /><span className="text-sm font-medium">{toastMessage}</span></div>)}
-      {showContactPicker && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[70vh]"><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-denim-900">{t.chatWindow.attach.contact}</h3><button onClick={() => setShowContactPicker(false)}><X size={20} className="text-denim-500"/></button></div><div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white"><div className="space-y-1">{myContacts.map(c => (<div key={c.id} onClick={() => handleSendContact(c)} className="flex items-center gap-3 p-3 hover:bg-cream-100 rounded-xl cursor-pointer"><img src={c.avatar} className="w-10 h-10 rounded-full shrink-0" /><div><p className="font-bold text-sm text-denim-900 flex items-center gap-1">{c.savedName}</p><p className="text-xs text-denim-500">{c.phoneNumber}</p></div></div>))}</div></div></div></div>)}
+      {showContactPicker && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[70vh]"><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-denim-900">{t.chatWindow.attach.contact}</h3><button onClick={() => setShowContactPicker(false)}><X size={20} className="text-denim-50"/></button></div><div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white"><div className="space-y-1">{myContacts.map(c => (<div key={c.id} onClick={() => handleSendContact(c)} className="flex items-center gap-3 p-3 hover:bg-cream-100 rounded-xl cursor-pointer"><img src={c.avatar} className="w-10 h-10 rounded-full shrink-0" /><div><p className="font-bold text-sm text-denim-900 flex items-center gap-1">{c.savedName}</p><p className="text-xs text-denim-500">{c.phoneNumber}</p></div></div>))}</div></div></div></div>)}
     </div>
   );
 };

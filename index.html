@@ -1,25 +1,33 @@
+
 <!DOCTYPE html>
 <html lang="id">
   <head>
     <meta charset="UTF-8" />
+    <!-- Primary Favicon -->
     <link rel="icon" type="image/png" href="/icon.png" />
     <link rel="shortcut icon" type="image/png" href="/icon.png" />
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     
+    <!-- PWA Primary Meta Tags -->
     <meta name="theme-color" content="#154c79" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     
+    <!-- Trick supaya bar notifikasi transparan & menyatu di iOS -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Hud-Hud" />
     
+    <!-- Apple Touch Icon (Untuk iPhone) -->
     <link rel="apple-touch-icon" href="/icon.png" />
     
+    <!-- Link Manifest PWA dengan crossorigin -->
     <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
     
     <title>Hud-Hud Messenger</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
       tailwind.config = {
         theme: {
@@ -54,6 +62,7 @@
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
+      /* Custom Scrollbar */
       .custom-scrollbar::-webkit-scrollbar {
         width: 5px;
       }
@@ -92,23 +101,58 @@
         background-color: #fdfbf7;
         background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23154c79' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
       }
+
+      /* Animasi Gradient Border untuk Modal */
+      @keyframes gradient-rotate {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      .animated-status-border {
+        position: relative;
+        padding: 3px; /* Ketebalan border */
+        background: linear-gradient(270deg, #154c79, #36b2fa, #f5f2eb, #0c9aeb);
+        background-size: 400% 400%;
+        animation: gradient-rotate 5s ease infinite;
+        border-radius: 24px;
+      }
+
+      .animated-status-content {
+        background: white;
+        border-radius: 21px; /* Harus sedikit lebih kecil dari parent agar rapi */
+        overflow: hidden;
+      }
+
+      /* QR Scan Scanner Animation */
+      @keyframes scan-line {
+        0% { transform: translateY(0); opacity: 0; }
+        50% { opacity: 1; }
+        100% { transform: translateY(240px); opacity: 0; }
+      }
+      .qr-scan-line {
+        height: 2px;
+        background: linear-gradient(to right, transparent, #36b2fa, transparent);
+        box-shadow: 0 0 15px #36b2fa;
+        animation: scan-line 2s linear infinite;
+      }
     </style>
   <script type="importmap">
-  {
-    "imports": {
-      "react/": "https://aistudiocdn.com/react@^19.2.1/",
-      "react": "https://aistudiocdn.com/react@^19.2.1",
-      "vite": "https://aistudiocdn.com/vite@^7.2.7",
-      "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
-      "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-      "date-fns": "https://aistudiocdn.com/date-fns@^4.1.0",
-      "lucide-react": "https://aistudiocdn.com/lucide-react@^0.559.0",
-      "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2"
-    }
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.7",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "date-fns": "https://aistudiocdn.com/date-fns@^4.1.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.559.0",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.2"
   }
-  </script>
-  <link rel="stylesheet" href="/index.css">
-  </head>
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
   <body class="bg-cream-100 text-denim-800 overflow-hidden">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
