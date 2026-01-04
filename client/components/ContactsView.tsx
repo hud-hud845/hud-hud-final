@@ -4,7 +4,7 @@ import {
   Search, UserPlus, Loader2, X, AlertTriangle, CheckSquare, 
   MoreVertical, Trash2, ArrowLeft, ShieldAlert, QrCode, 
   Image as ImageIcon, Maximize, Camera, MessageSquare, BadgeCheck, Phone, CheckCircle2,
-  LayoutGrid, List, ChevronDown, Plus, UserSearch
+  LayoutGrid, List, ChevronDown, Plus
 } from 'lucide-react';
 import { collection, query, where, onSnapshot, getDocs, addDoc, doc, writeBatch, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -367,7 +367,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400" /></div> 
         ) : filteredContacts.length === 0 ? ( 
           <div className="text-center py-20 text-denim-400">
-            <UserSearch size={48} className="mx-auto mb-4 opacity-20" />
+            <Search size={48} className="mx-auto mb-4 opacity-20" />
             <p className="font-bold text-sm">Tidak ada pengguna ditemukan.</p>
           </div> 
         ) : (
@@ -440,7 +440,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
                     onClick={() => { resetModal(); setShowAddModal(true); setShowFabMenu(false); }}
                     className="w-12 h-12 bg-white text-denim-700 rounded-2xl shadow-xl flex items-center justify-center border border-cream-200 hover:bg-cream-50 transition-all active:scale-90"
                    >
-                     <UserSearch size={22} />
+                     <UserPlus size={22} />
                    </button>
                 </div>
              </div>
