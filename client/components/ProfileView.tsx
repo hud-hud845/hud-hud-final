@@ -22,8 +22,7 @@ interface ProfileViewProps {
 export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, onNavigate }) => {
   const { currentUser } = useAuth();
   const t = translations[appSettings?.language || 'id'];
-  const [isEditing] = useState(false); // Diedit sedikit agar tidak memunculkan warning unused jika tidak dipakai
-  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   
   const [name, setName] = useState(currentUser?.name || '');
   const [bio, setBio] = useState(currentUser?.bio || '');
@@ -47,7 +46,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
       if (docSnap.exists()) {
         const userData = docSnap.data();
         setIsPro(!!userData.isProfessional);
-        if (!isEditingProfile) {
+        if (!isEditing) {
           setName(userData.name || '');
           setBio(userData.bio || '');
           setAddress(userData.address || '');
@@ -55,7 +54,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
       }
     });
     return () => unsubFirestore();
-  }, [currentUser, isEditingProfile]);
+  }, [currentUser, isEditing]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -67,7 +66,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
     setLoading(true);
     try {
       await updateDoc(doc(db, 'users', currentUser.id), { name, bio, address });
-      setIsEditingProfile(false);
+      setIsEditing(false);
       showToast("Profil diperbarui");
     } catch (e) {
       alert("Gagal memperbarui profil.");
@@ -111,13 +110,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
     setIsDownloading(true);
     
     try {
+      // Tunggu sebentar untuk memastikan DOM stabil
       await new Promise(resolve => setTimeout(resolve, 500));
+      
       // @ts-ignore
       const dataUrl = await window.htmlToImage.toPng(zoomCardRef.current, { 
         quality: 1.0,
-        pixelRatio: 3,
+        pixelRatio: 3, // Ditingkatkan ke 3 untuk ketajaman ultra
         cacheBust: true,
-        backgroundColor: '#0a2e4d',
+        backgroundColor: '#0a2e4d', // Fallback background denim
         style: {
           transform: 'scale(1)',
           borderRadius: '28px'
@@ -141,6 +142,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
   };
 
   const ProfileCardUI = ({ containerRef, isZoomed = false }: { containerRef?: React.RefObject<HTMLDivElement>, isZoomed?: boolean }) => {
+    // Generate QR Code URL using currentUser ID - Menggunakan API yang stabil
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${currentUser?.id}&bgcolor=ffffff&color=0a2e4d&margin=1`;
 
     return (
@@ -152,9 +154,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
         `}
         onClick={() => !isZoomed && setIsCardZoomed(true)}
       >
+        {/* Background Accents - Optimized for capture */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-amber-400/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400/40 via-transparent to-transparent opacity-40"></div>
         
+        {/* Card Header Section */}
         <div className="flex justify-between items-start mb-4 sm:mb-6 relative z-10">
           <div className="flex flex-col">
             <h1 className="text-xl sm:text-2xl font-black tracking-[0.4em] text-amber-400 leading-none drop-shadow-md">HUD-HUD</h1>
@@ -168,7 +172,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
           )}
         </div>
 
+        {/* Main Content Area: Photo + Data | QR CODE Center Right */}
         <div className="flex justify-between items-center gap-4 relative z-10 h-[60%]">
+          {/* Left Side: Profile Info */}
           <div className="flex-1 flex gap-4 items-center min-w-0">
              <div className="relative shrink-0">
                 <div className="absolute -inset-1.5 bg-gradient-to-br from-amber-400/30 to-amber-600/30 rounded-2xl blur-[2px]"></div>
@@ -196,6 +202,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
              </div>
           </div>
 
+          {/* Right Side: LARGE EXCLUSIVE QR CODE - Centered Vertically */}
           <div className="shrink-0 flex flex-col items-center justify-center gap-2 ps-4 border-l border-white/5">
              <div className="p-1.5 bg-gradient-to-br from-amber-300 via-amber-500 to-amber-200 rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.25)] transition-transform hover:scale-105">
                 <div className="bg-white p-1 rounded-xl">
@@ -206,6 +213,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
           </div>
         </div>
 
+        {/* Bottom Bar: Address */}
         <div className="absolute bottom-4 left-6 sm:left-8 right-6 sm:right-8 flex items-center justify-between border-t border-white/10 pt-3">
           <div className="flex items-center gap-2 text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-denim-200 min-w-0">
              <MapPin size={10} className="text-amber-400 shrink-0" />
@@ -238,11 +246,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
          <div className="bg-white p-5 rounded-2xl shadow-sm border border-cream-200 space-y-5">
             <div>
               <label className="text-[9px] font-black text-denim-400 uppercase tracking-widest block mb-1 ml-1">Nama Lengkap</label>
-              {isEditingProfile ? ( <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full border border-cream-200 rounded-xl px-4 py-2.5 text-denim-900 bg-cream-50 focus:ring-1 focus:ring-denim-500 outline-none text-sm font-bold shadow-inner" placeholder="Masukkan nama..." /> ) : ( <p className="text-base font-black text-denim-900 px-1">{currentUser?.name}</p> )}
+              {isEditing ? ( <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full border border-cream-200 rounded-xl px-4 py-2.5 text-denim-900 bg-cream-50 focus:ring-1 focus:ring-denim-500 outline-none text-sm font-bold shadow-inner" placeholder="Masukkan nama..." /> ) : ( <p className="text-base font-black text-denim-900 px-1">{currentUser?.name}</p> )}
             </div>
             <div>
               <label className="text-[9px] font-black text-denim-400 uppercase tracking-widest block mb-1 ml-1">Bio / Info</label>
-              {isEditingProfile ? ( <textarea value={bio} onChange={(e) => setBio(e.target.value)} className="w-full border border-cream-200 rounded-xl px-4 py-2.5 text-denim-900 bg-cream-50 focus:ring-1 focus:ring-denim-500 outline-none text-sm h-16 resize-none font-medium shadow-inner" placeholder="Tulis sesuatu tentang Anda..." /> ) : ( <p className="text-sm text-denim-700 px-1 leading-relaxed italic">{currentUser?.bio || '-'}</p> )}
+              {isEditing ? ( <textarea value={bio} onChange={(e) => setBio(e.target.value)} className="w-full border border-cream-200 rounded-xl px-4 py-2.5 text-denim-900 bg-cream-50 focus:ring-1 focus:ring-denim-500 outline-none text-sm h-16 resize-none font-medium shadow-inner" placeholder="Tulis sesuatu tentang Anda..." /> ) : ( <p className="text-sm text-denim-700 px-1 leading-relaxed italic">{currentUser?.bio || '-'}</p> )}
             </div>
             <div className="opacity-80">
               <label className="text-[9px] font-black text-denim-400 uppercase tracking-widest block mb-1 ml-1 flex items-center gap-1.5"><Phone size={10} /> Nomor HP</label>
@@ -250,7 +258,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
             </div>
             <div>
               <label className="text-[9px] font-black text-denim-400 uppercase tracking-widest block mb-1 ml-1 flex items-center gap-1.5"><MapPin size={10} /> Alamat Lengkap</label>
-              {isEditingProfile ? ( <textarea value={address} onChange={(e) => setAddress(e.target.value)} className="w-full border border-cream-200 rounded-xl px-4 py-2.5 text-denim-900 bg-cream-50 focus:ring-1 focus:ring-denim-500 outline-none text-sm h-20 resize-none font-medium shadow-inner" placeholder="Masukkan alamat lengkap..." /> ) : ( <p className="text-sm text-denim-800 px-1 leading-relaxed">{currentUser?.address || 'Alamat belum diatur'}</p> )}
+              {isEditing ? ( <textarea value={address} onChange={(e) => setAddress(e.target.value)} className="w-full border border-cream-200 rounded-xl px-4 py-2.5 text-denim-900 bg-cream-50 focus:ring-1 focus:ring-denim-500 outline-none text-sm h-20 resize-none font-medium shadow-inner" placeholder="Masukkan alamat lengkap..." /> ) : ( <p className="text-sm text-denim-800 px-1 leading-relaxed">{currentUser?.address || 'Alamat belum diatur'}</p> )}
             </div>
             <div className="opacity-80">
               <label className="text-[9px] font-black text-denim-400 uppercase tracking-widest block mb-1 ml-1 flex items-center gap-1.5"><Mail size={10} /> Alamat Email</label>
@@ -258,23 +266,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
             </div>
          </div>
 
-         {/* MENU DASHBOARD PRO DI SEMBUNYIKAN (HIDE) SEMENTARA SEBAGAI PERMINTAAN USER */}
-         {/* 
          {!currentUser?.isAdmin && (
            <div className="mt-4">
              {isPro ? (
                <button onClick={() => onNavigate && onNavigate('professional_dashboard')} className="w-full bg-denim-700 p-4 rounded-2xl border border-denim-600 shadow-lg flex items-center justify-between group active:scale-95 transition-all animate-in zoom-in-90"><div className="flex items-center gap-3 text-white text-left"><div className="p-2 bg-white/10 rounded-xl shadow-inner"><LayoutDashboard size={20} /></div><div><p className="font-black text-sm tracking-tight">Dashboard Profesional</p><p className="text-[9px] text-denim-100 flex items-center gap-1 font-bold uppercase opacity-80"><Sparkles size={10} className="text-yellow-400" /> Kreator Aktif</p></div></div><ChevronRight size={18} className="text-denim-300" /></button>
              ) : (
+               /* Sembunyikan sementara Menu Pengajuan Pro sesuai request - Bos bisa aktifkan kembali dengan menghapus null di bawah */
+               null
+               /* 
                <button onClick={() => setShowConfirmActivate(true)} className="w-full bg-white p-4 rounded-2xl border border-denim-200 shadow-sm flex items-center justify-between group hover:bg-denim-50 active:scale-95 transition-all"><div className="flex items-center gap-3 text-left"><div className="p-2 bg-denim-600 text-white rounded-xl shadow-md"><LayoutDashboard size={20} /></div><div><p className="font-black text-sm text-denim-900 tracking-tight">Buka Dashboard Pro</p><p className="text-[9px] text-denim-400 font-bold uppercase">Mulai Menghasilkan Uang</p></div></div><ChevronRight size={18} className="text-denim-200" /></button>
+               */
              )}
            </div>
-         )} 
-         */}
+         )}
 
          <div className="mt-4">
-           {isEditingProfile ? ( <div className="flex gap-2"><button onClick={() => setIsEditingProfile(false)} className="flex-1 py-3 bg-cream-200 text-denim-700 font-black rounded-xl text-xs uppercase active:scale-95">Batal</button><button onClick={handleUpdateProfile} disabled={loading} className="flex-[2] py-3 bg-denim-600 text-white font-black rounded-xl text-xs flex justify-center items-center gap-2 shadow shadow-denim-900/20 uppercase tracking-widest active:scale-95">{loading && <Loader2 size={14} className="animate-spin"/>} Simpan</button></div> ) : ( <button onClick={() => setIsEditingProfile(true)} className="w-full py-3 bg-white border border-cream-300 text-denim-700 font-black rounded-xl text-xs hover:bg-cream-50 active:scale-95 shadow-sm uppercase tracking-widest">Edit Profil</button> )}
+           {isEditing ? ( <div className="flex gap-2"><button onClick={() => setIsEditing(false)} className="flex-1 py-3 bg-cream-200 text-denim-700 font-black rounded-xl text-xs uppercase active:scale-95">Batal</button><button onClick={handleUpdateProfile} disabled={loading} className="flex-[2] py-3 bg-denim-600 text-white font-black rounded-xl text-xs flex justify-center items-center gap-2 shadow shadow-denim-900/20 uppercase tracking-widest active:scale-95">{loading && <Loader2 size={14} className="animate-spin"/>} Simpan</button></div> ) : ( <button onClick={() => setIsEditing(true)} className="w-full py-3 bg-white border border-cream-300 text-denim-700 font-black rounded-xl text-xs hover:bg-cream-50 active:scale-95 shadow-sm uppercase tracking-widest">Edit Profil</button> )}
          </div>
 
+         {/* --- EXCLUSIVE DIGITAL PROFILE CARD --- */}
          <div className="mt-8">
             <div className="flex items-center justify-between mb-4 px-1">
                <h4 className="text-[10px] font-black text-denim-400 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -286,6 +296,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
          </div>
       </div>
 
+      {/* ZOOM MODAL & DOWNLOAD */}
       {isCardZoomed && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
            <div className="w-full max-w-[550px] flex flex-col items-center gap-8">
@@ -299,6 +310,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
                  </button>
               </div>
 
+              {/* Elemen ini yang dicapture oleh html-to-image */}
               <div className="w-full">
                  <ProfileCardUI containerRef={zoomCardRef} isZoomed={true} />
               </div>
@@ -318,6 +330,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
         </div>
       )}
 
+      {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[110] bg-denim-800 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-3 border border-white/10">
           <CheckCircle2 size={18} className="text-green-400" />
@@ -327,7 +340,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
 
       {showConfirmActivate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-[28px] p-6 max-w-sm w-full shadow-2xl border border-cream-200 text-center animate-in zoom-in-95 duration-300"><div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner"><ShieldAlert size={32} /></div><h3 className="text-lg font-black text-denim-900 mb-2 tracking-tight">Buka Dashboard Pro?</h3><p className="text-xs text-denim-500 mb-6 leading-relaxed font-medium">Anda akan mendapatkan akses ke fitur monetisasi, statistik postingan, dan manajemen saldo penghasilan.</p><div className="flex flex-col gap-2"><button onClick={handleActivatePro} disabled={isActivating} className="w-full py-3 bg-denim-700 text-white font-black rounded-xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 text-[11px] uppercase tracking-widest">{isActivating ? <Loader2 size={16} className="animate-spin" /> : "Iya, Saya Yakin"}</button><button onClick={() => setShowConfirmActivate(false)} disabled={isActivating} className="w-full py-3 text-denim-500 font-bold rounded-xl text-[11px] uppercase hover:bg-cream-50 transition-colors">Batal</button></div></div>
+          <div className="bg-white rounded-[28px] p-6 max-sm w-full shadow-2xl border border-cream-200 text-center animate-in zoom-in-95 duration-300"><div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner"><ShieldAlert size={32} /></div><h3 className="text-lg font-black text-denim-900 mb-2 tracking-tight">Buka Dashboard Pro?</h3><p className="text-xs text-denim-500 mb-6 leading-relaxed font-medium">Anda akan mendapatkan akses ke fitur monetisasi, statistik postingan, dan manajemen saldo penghasilan.</p><div className="flex flex-col gap-2"><button onClick={handleActivatePro} disabled={isActivating} className="w-full py-3 bg-denim-700 text-white font-black rounded-xl shadow-lg active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50 text-[11px] uppercase tracking-widest">{isActivating ? <Loader2 size={16} className="animate-spin" /> : "Iya, Saya Yakin"}</button><button onClick={() => setShowConfirmActivate(false)} disabled={isActivating} className="w-full py-3 text-denim-500 font-bold rounded-xl text-[11px] uppercase hover:bg-cream-50 transition-colors">Batal</button></div></div>
         </div>
       )}
     </div>

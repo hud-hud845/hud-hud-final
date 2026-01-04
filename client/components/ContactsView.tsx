@@ -3,13 +3,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, UserPlus, Loader2, X, AlertTriangle, CheckSquare, 
   MoreVertical, Trash2, ArrowLeft, ShieldAlert, QrCode, 
-  Image as ImageIcon, Maximize, Camera, MessageSquare, BadgeCheck, Phone, CheckCircle2
+  Image as ImageIcon, Maximize, Camera, MessageSquare, BadgeCheck, Phone, CheckCircle2,
+  LayoutGrid, List, ChevronDown, Plus, UserSearch
 } from 'lucide-react';
 import { collection, query, where, onSnapshot, getDocs, addDoc, doc, writeBatch, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useAuth } from '../context/AuthContext';
 import { translations } from '../utils/translations';
-import { ViewHeader } from './SidebarViews';
 import { AppSettings } from './Layout';
 import { Contact, User } from '../types';
 
@@ -19,11 +19,16 @@ interface ContactsViewProps {
   appSettings?: AppSettings;
 }
 
+type ViewMode = 'list' | 'grid';
+
 export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat, appSettings }) => {
   const { currentUser } = useAuth();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => (localStorage.getItem('hudhud_contact_view') as ViewMode) || 'list');
+  const [showViewDropdown, setShowViewDropdown] = useState(false);
+  
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [showOptions, setShowOptions] = useState(false);
@@ -36,6 +41,9 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
   const [savedName, setSavedName] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // FAB Menu States
+  const [showFabMenu, setShowFabMenu] = useState(false);
 
   // QR Scan States
   const [showQrScanner, setShowQrScanner] = useState(false);
@@ -83,6 +91,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
     return () => unsubscribe && unsubscribe();
   }, [currentUser]);
 
+  useEffect(() => {
+    localStorage.setItem('hudhud_contact_view', viewMode);
+  }, [viewMode]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
@@ -93,6 +105,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
     setShowQrScanner(true);
     setQrScanning(true);
     setShowOptions(false);
+    setShowFabMenu(false);
     
     setTimeout(() => {
       // @ts-ignore
@@ -123,19 +136,14 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
     setQrScanning(false);
   };
 
-  // LOGIKA UTAMA SETELAH SCAN / DETEKSI QR BERHASIL
   const handleQrResult = async (result: string) => {
-    // 1. Matikan scanner
     await stopScanner();
-    
-    // 2. Siapkan modal info
     setSearchingUser(true);
     setFoundUser(null);
     setSearchError('');
     setShowAddModal(true);
 
     try {
-      // 3. Cari Data: Pertama cek apakah result adalah UID (Format QR Profile Card)
       const userDoc = await getDoc(doc(db, 'users', result));
       if (userDoc.exists()) {
         const data = userDoc.data();
@@ -146,7 +154,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
           setSavedName(data.name);
         }
       } else {
-        // 4. Jika bukan UID, cek apakah result adalah Nomor HP
         const q = query(collection(db, 'users'), where('phoneNumber', '==', result));
         const snap = await getDocs(q);
         if (!snap.empty) {
@@ -169,7 +176,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
     }
   };
 
-  // LOGIKA UNGGAH GAMBAR QR
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -184,7 +190,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
     }
   };
 
-  // LOGIKA PENCARIAN MANUAL
   const handleSearchUser = async () => {
     if (!searchPhone) return;
     setSearchingUser(true); 
@@ -265,23 +270,22 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
   };
 
   const filteredContacts = contacts.filter(c => c.savedName.toLowerCase().includes(search.toLowerCase()) || c.phoneNumber.includes(search));
-
-  // CEK APAKAH USER SUDAH ADA DI KONTAK
   const isAlreadyInContacts = foundUser ? contacts.some(c => c.uid === foundUser.id) : false;
 
   return (
     <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
-      <div className="h-[60px] px-4 pt-[calc(0rem+env(safe-area-inset-top))] flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 shrink-0 text-denim-900 box-content">
+      {/* HEADER */}
+      <div className="h-[60px] px-4 pt-[calc(0rem+env(safe-area-inset-top))] flex items-center justify-between bg-cream-50 border-b border-cream-200 sticky top-0 z-10 shrink-0 text-denim-900 box-content shadow-sm">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 -ms-2 text-denim-500 hover:bg-cream-200 rounded-full transition-colors"><ArrowLeft size={20} className="rtl:rotate-180" /></button>
-          <h2 className="text-lg font-semibold">{isSelectionMode ? `${selectedContactIds.size} Terpilih` : (currentUser?.isAdmin ? "Manajemen User" : t.contacts.title)}</h2>
+          <h2 className="text-lg font-black tracking-tight">{isSelectionMode ? `${selectedContactIds.size} Terpilih` : (currentUser?.isAdmin ? "Manajemen User" : t.contacts.title)}</h2>
         </div>
         <div className="relative">
             {isSelectionMode ? ( 
                <div className="flex gap-2">
-                 <button onClick={() => { setIsSelectionMode(false); setSelectedContactIds(new Set()); }} className="text-sm font-bold text-denim-600 px-3 py-1 hover:bg-cream-200 rounded-lg">{t.common.cancel}</button>
+                 <button onClick={() => { setIsSelectionMode(false); setSelectedContactIds(new Set()); }} className="text-xs font-black uppercase tracking-wider text-denim-600 px-3 py-1.5 hover:bg-cream-200 rounded-xl transition-all">{t.common.cancel}</button>
                  {selectedContactIds.size > 0 && (
-                   <button onClick={() => setShowDeleteConfirm(true)} className="text-sm font-bold text-red-500 px-3 py-1 hover:bg-red-50 rounded-lg">{t.common.delete}</button>
+                   <button onClick={() => setShowDeleteConfirm(true)} className="text-xs font-black uppercase tracking-wider bg-red-50 text-red-600 px-4 py-1.5 hover:bg-red-100 rounded-xl transition-all shadow-sm">{t.common.delete}</button>
                  )}
                </div> 
             ) : ( 
@@ -290,71 +294,165 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
                </button> 
             )}
             {showOptions && !isSelectionMode && (
-              <div className="absolute right-0 top-10 bg-white shadow-xl border border-cream-200 rounded-xl py-1 w-48 z-[60] animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 top-10 bg-white shadow-xl border border-cream-200 rounded-2xl py-1 w-48 z-[60] animate-in fade-in zoom-in-95 overflow-hidden">
                 <button 
                   onClick={() => { setIsSelectionMode(true); setShowOptions(false); }} 
-                  className="w-full text-left px-4 py-3 text-sm text-denim-800 hover:bg-cream-50 flex items-center gap-2"
+                  className="w-full text-start px-4 py-3 text-sm font-bold text-denim-800 hover:bg-cream-50 flex items-center gap-3 transition-colors"
                 >
-                  <CheckSquare size={16}/> {currentUser?.isAdmin ? "Pilih Pengguna" : t.contacts.select}
+                  <CheckSquare size={18} className="text-denim-400"/> {currentUser?.isAdmin ? "Pilih Pengguna" : t.contacts.select}
                 </button>
                 <button 
                   onClick={startScanner} 
-                  className="w-full text-left px-4 py-3 text-sm text-denim-800 hover:bg-cream-50 flex items-center gap-2 border-t border-cream-100"
+                  className="w-full text-start px-4 py-3 text-sm font-bold text-denim-800 hover:bg-cream-50 flex items-center gap-3 border-t border-cream-100 transition-colors"
                 >
-                  <QrCode size={16}/> Scan QR Code
+                  <QrCode size={18} className="text-denim-400"/> Scan QR Code
                 </button>
               </div>
             )}
         </div>
       </div>
 
+      {/* FILTER & VIEW TOGGLE */}
       <div className="p-3 bg-cream-50 border-b border-cream-200">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-denim-400" size={16} />
-          <input 
-            type="text" 
-            placeholder={currentUser?.isAdmin ? "Cari nama atau nomor..." : t.contacts.search} 
-            value={search} 
-            onChange={(e) => setSearch(e.target.value)} 
-            className="w-full pl-9 pr-4 py-2 bg-white border border-cream-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 text-denim-900"
-          />
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-denim-400" size={16} />
+            <input 
+              type="text" 
+              placeholder={currentUser?.isAdmin ? "Cari nama atau nomor..." : t.contacts.search} 
+              value={search} 
+              onChange={(e) => setSearch(e.target.value)} 
+              className="w-full pl-9 pr-4 py-2.5 bg-white border border-cream-200 rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 text-denim-900 shadow-sm placeholder-denim-300"
+            />
+          </div>
+          
+          {/* VIEW MODE DROPDOWN MEWAH */}
+          <div className="relative">
+            <button 
+              onClick={() => setShowViewDropdown(!showViewDropdown)}
+              className="p-2.5 bg-white border border-cream-200 rounded-xl text-denim-600 shadow-sm hover:bg-cream-100 transition-all flex items-center gap-2 active:scale-95"
+            >
+              {viewMode === 'list' ? <List size={20} /> : <LayoutGrid size={20} />}
+              <ChevronDown size={14} className={`transition-transform duration-300 ${showViewDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {showViewDropdown && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowViewDropdown(false)}></div>
+                <div className="absolute right-0 top-12 w-44 bg-white/80 backdrop-blur-xl border border-cream-200 rounded-2xl shadow-2xl z-50 p-1.5 animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                  <button 
+                    onClick={() => { setViewMode('list'); setShowViewDropdown(false); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${viewMode === 'list' ? 'bg-denim-700 text-white shadow-lg shadow-denim-900/20' : 'text-denim-800 hover:bg-cream-50'}`}
+                  >
+                    <List size={16} /> Daftar
+                    {viewMode === 'list' && <CheckCircle2 size={12} className="ms-auto" />}
+                  </button>
+                  <button 
+                    onClick={() => { setViewMode('grid'); setShowViewDropdown(false); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest mt-1 transition-all ${viewMode === 'grid' ? 'bg-denim-700 text-white shadow-lg shadow-denim-900/20' : 'text-denim-800 hover:bg-cream-50'}`}
+                  >
+                    <LayoutGrid size={16} /> Kotak
+                    {viewMode === 'grid' && <CheckCircle2 size={12} className="ms-auto" />}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="p-2 flex-1 overflow-y-auto custom-scrollbar pb-32 md:pb-0">
+      {/* CONTENT: LIST OR GRID */}
+      <div className="p-4 flex-1 overflow-y-auto custom-scrollbar pb-32 md:pb-0">
         {loading ? ( 
           <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400" /></div> 
         ) : filteredContacts.length === 0 ? ( 
-          <div className="text-center p-8 text-denim-400 text-sm">Tidak ada pengguna ditemukan.</div> 
+          <div className="text-center py-20 text-denim-400">
+            <UserSearch size={48} className="mx-auto mb-4 opacity-20" />
+            <p className="font-bold text-sm">Tidak ada pengguna ditemukan.</p>
+          </div> 
         ) : (
-            filteredContacts.map(contact => {
+          <div className={viewMode === 'grid' ? "grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4" : "space-y-2"}>
+            {filteredContacts.map(contact => {
                 const isSelected = selectedContactIds.has(contact.id);
+                
+                if (viewMode === 'grid') {
+                  return (
+                    <div 
+                      key={contact.id} 
+                      onClick={() => { if (isSelectionMode) handleSelectContact(contact.id); else if (onStartChat) onStartChat(contact.uid); }} 
+                      className={`group relative aspect-square bg-white rounded-[32px] border transition-all duration-300 flex flex-col items-center justify-center p-4 text-center cursor-pointer hover:shadow-xl ${isSelectionMode && isSelected ? 'bg-denim-50 border-denim-400 ring-2 ring-denim-100' : 'border-cream-200 shadow-sm'}`}
+                    >
+                      <div className="relative mb-3">
+                        <img src={contact.avatar} className="w-16 h-16 sm:w-20 sm:h-20 rounded-[28px] object-cover bg-denim-50 border border-black/5 shadow-md group-hover:scale-105 transition-transform" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.savedName)}`}/>
+                        {isSelectionMode && (
+                          <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-denim-600 border-white shadow-md' : 'bg-white border-denim-200 shadow-inner'}`}>
+                            {isSelected && <CheckCircle2 size={14} className="text-white" />}
+                          </div>
+                        )}
+                      </div>
+                      <h4 className="font-black text-denim-900 truncate w-full text-xs tracking-tight uppercase px-1 leading-tight">{contact.savedName}</h4>
+                      <p className="text-[9px] text-denim-400 font-bold mt-1 opacity-70 truncate w-full px-2 tracking-tighter">{contact.phoneNumber}</p>
+                    </div>
+                  );
+                }
+
+                // LIST MODE
                 return ( 
                   <div 
                     key={contact.id} 
                     onClick={() => { if (isSelectionMode) handleSelectContact(contact.id); else if (onStartChat) onStartChat(contact.uid); }} 
-                    className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-colors border ${isSelectionMode && isSelected ? 'bg-denim-100 border-denim-300' : 'border-transparent hover:bg-white hover:border-cream-200'}`}
+                    className={`flex items-center gap-4 p-3.5 rounded-2xl cursor-pointer transition-all duration-300 border mb-1 ${isSelectionMode && isSelected ? 'bg-denim-50 border-denim-300 shadow-inner' : 'bg-white border-cream-200 shadow-sm hover:border-denim-200 hover:shadow-md'}`}
                   >
                     {isSelectionMode && ( 
-                      <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isSelected ? 'bg-denim-600 border-denim-600' : 'border-denim-300 bg-white'}`}>
-                        {isSelected && <CheckSquare size={14} className="text-white" />}
+                      <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 ${isSelected ? 'bg-denim-600 border-denim-600 shadow-md' : 'border-denim-300 bg-cream-50'}`}>
+                        {isSelected && <CheckSquare size={16} className="text-white" />}
                       </div> 
                     )}
-                    <img src={contact.avatar} className="w-10 h-10 rounded-full object-cover bg-denim-200 border border-cream-200" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.savedName)}`}/>
+                    <img src={contact.avatar} className="w-12 h-12 rounded-[18px] object-cover bg-denim-50 border border-black/5" onError={(e) => (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(contact.savedName)}`}/>
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-denim-900 text-sm truncate">{contact.savedName}</h4>
-                      <p className="text-xs text-denim-500 truncate">{contact.phoneNumber}</p>
+                      <h4 className="font-black text-denim-900 text-sm truncate tracking-tight">{contact.savedName}</h4>
+                      <p className="text-[11px] text-denim-400 font-bold uppercase tracking-tighter mt-0.5">{contact.phoneNumber}</p>
                     </div>
                   </div> 
                 );
-            })
+            })}
+          </div>
         )}
       </div>
 
+      {/* FAB EXPANDABLE MENU */}
       {!currentUser?.isAdmin && !isSelectionMode && ( 
-        <button onClick={() => { resetModal(); setShowAddModal(true); }} className="absolute bottom-24 md:bottom-6 right-6 w-14 h-14 bg-denim-600 hover:bg-denim-700 text-white rounded-full shadow-xl flex items-center justify-center transition-transform hover:scale-105 z-20 pb-safe">
-          <UserPlus size={24} />
-        </button> 
+        <div className="fixed bottom-24 md:bottom-6 right-6 flex flex-col items-end gap-3 z-[70]">
+           {showFabMenu && (
+             <div className="flex flex-col items-end gap-3 mb-2 animate-in slide-in-from-bottom-5 duration-300">
+                <div className="flex items-center gap-3">
+                   <span className="bg-denim-800 text-white text-[10px] font-black px-3 py-1.5 rounded-xl shadow-xl uppercase tracking-widest border border-white/10">Scan QR</span>
+                   <button 
+                    onClick={startScanner}
+                    className="w-12 h-12 bg-white text-denim-700 rounded-2xl shadow-xl flex items-center justify-center border border-cream-200 hover:bg-cream-50 transition-all active:scale-90"
+                   >
+                     <QrCode size={22} />
+                   </button>
+                </div>
+                <div className="flex items-center gap-3">
+                   <span className="bg-denim-800 text-white text-[10px] font-black px-3 py-1.5 rounded-xl shadow-xl uppercase tracking-widest border border-white/10">Tambah Kontak</span>
+                   <button 
+                    onClick={() => { resetModal(); setShowAddModal(true); setShowFabMenu(false); }}
+                    className="w-12 h-12 bg-white text-denim-700 rounded-2xl shadow-xl flex items-center justify-center border border-cream-200 hover:bg-cream-50 transition-all active:scale-90"
+                   >
+                     <UserSearch size={22} />
+                   </button>
+                </div>
+             </div>
+           )}
+           
+           <button 
+             onClick={() => setShowFabMenu(!showFabMenu)}
+             className={`w-14 h-14 rounded-[24px] shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 z-20 shadow-denim-900/30 border border-denim-600 ${showFabMenu ? 'bg-red-500 rotate-45' : 'bg-denim-700 text-white'}`}
+           >
+             {showFabMenu ? <X size={28} className="text-white" /> : <Plus size={32} />}
+           </button> 
+        </div>
       )}
 
       {/* --- LUXURY QR SCANNER VIEW --- */}
@@ -371,18 +469,13 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
               </div>
 
               <div className="relative w-72 h-72 sm:w-80 sm:h-80 mb-10">
-                {/* Corner Frame Glow */}
                 <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-amber-400 rounded-tl-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
                 <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-amber-400 rounded-tr-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
                 <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-amber-400 rounded-bl-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
                 <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-amber-400 rounded-br-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
-                
-                {/* Scanner Container */}
                 <div id="qr-reader" className="w-full h-full overflow-hidden rounded-[40px] bg-denim-900/50 relative border-2 border-white/5">
                    <div className="qr-scan-line absolute left-0 right-0 top-0 z-20"></div>
                 </div>
-                
-                {/* Input tersembunyi untuk scan file */}
                 <div id="qr-reader-hidden" className="hidden"></div>
               </div>
 
@@ -394,21 +487,18 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
                     <ImageIcon size={20} /> UNGGAH DARI GALERI
                     <input type="file" ref={qrUploadInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                  </button>
-                 <p className="text-[10px] text-white/40 text-center font-bold uppercase tracking-[0.3em] px-4 leading-relaxed">
-                    Arahkan kamera ke profil Hud-Hud teman Anda atau pilih gambar dari galeri
-                 </p>
               </div>
            </div>
         </div>
       )}
 
-      {/* --- MODAL INFO KONTAK (HASIL SCAN / CARI MANUAL) --- */}
+      {/* --- MODAL INFO KONTAK --- */}
       {showAddModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-denim-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-cream-200 flex justify-between items-center bg-cream-50">
               <h3 className="font-black text-sm uppercase tracking-widest text-denim-900">{foundUser ? 'Info Kontak' : t.contacts.newContact}</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-cream-200 rounded-full transition-colors"><X size={20}/></button>
+              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-cream-200 rounded-full transition-colors text-denim-700"><X size={20}/></button>
             </div>
             <div className="p-6">
               {searchingUser ? (
@@ -437,7 +527,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
                     {isAlreadyInContacts ? (
                       <div className="w-full space-y-4">
                          <div className="flex items-center justify-center gap-2 text-green-600 font-black text-[10px] uppercase tracking-widest bg-green-50 py-2 rounded-full border border-green-100">
-                           <CheckSquare size={14} /> Sudah Ada di Kontak
+                           <CheckCircle2 size={14} /> Sudah Ada di Kontak
                          </div>
                          <button 
                            onClick={() => { if(onStartChat) onStartChat(foundUser.id); setShowAddModal(false); }}
@@ -494,7 +584,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
                           {searchingUser ? <Loader2 size={20} className="animate-spin"/> : <Search size={20} />}
                         </button>
                       </div>
-                      <p className="text-[9px] text-denim-400 font-bold uppercase mt-4 tracking-widest">Gunakan format nomor lokal (08...)</p>
                     </>
                   )}
                 </div>
@@ -507,15 +596,15 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
       {/* DIALOG KONFIRMASI HAPUS */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[21px] p-6 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
-              <div className={`w-16 h-16 ${currentUser?.isAdmin ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'} rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner`}>
+          <div className="bg-white rounded-[32px] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
+              <div className={`w-16 h-16 ${currentUser?.isAdmin ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'} rounded-[28px] flex items-center justify-center mx-auto mb-4 shadow-inner`}>
                 {currentUser?.isAdmin ? <ShieldAlert size={32} /> : <Trash2 size={32} />}
               </div>
               <h3 className="text-lg font-black text-denim-900 mb-2 tracking-tight">{currentUser?.isAdmin ? "Unregister User?" : "Hapus Kontak?"}</h3>
               <p className="text-sm text-denim-500 mb-6 leading-relaxed font-medium">{currentUser?.isAdmin ? `Hapus ${selectedContactIds.size} pengguna permanen?` : `Anda akan menghapus ${selectedContactIds.size} kontak terpilih.`}</p>
-              <div className="flex gap-3">
-                <button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="flex-1 py-3 bg-cream-100 text-denim-700 rounded-xl font-bold text-xs uppercase">Batal</button>
-                <button onClick={handleDeleteSelected} disabled={isDeleting} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg flex items-center justify-center gap-2">{isDeleting ? <Loader2 size={14} className="animate-spin" /> : "Hapus"}</button>
+              <div className="flex flex-col gap-2">
+                <button onClick={handleDeleteSelected} disabled={isDeleting} className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">{isDeleting ? <Loader2 size={14} className="animate-spin" /> : "Ya, Hapus"}</button>
+                <button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="w-full py-3 text-denim-400 font-bold rounded-2xl hover:bg-cream-50 transition-colors text-xs uppercase">Batal</button>
               </div>
           </div>
         </div>
