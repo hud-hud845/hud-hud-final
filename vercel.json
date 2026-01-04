@@ -1,9 +1,10 @@
 {
   "cleanUrls": true,
+  "installCommand": "npm install --legacy-peer-deps",
   "rewrites": [
     {
-      "source": "/favicon.png",
-      "destination": "/favicon.png"
+      "source": "/icon.png",
+      "destination": "/icon.png"
     },
     {
       "source": "/manifest.json",
