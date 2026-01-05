@@ -32,15 +32,20 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
     const notifRef = ref(rtdb, `notifications/${currentUser.id}`);
     const unsubscribe = onValue(notifRef, (snapshot) => {
       const val = snapshot.val();
+      const now = Date.now();
       if (val) {
         const list = Object.entries(val).map(([id, data]: [string, any]) => ({
           id,
           ...data,
           createdAt: data.createdAt ? new Date(data.createdAt) : new Date()
-        })).sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
+        }))
+        // Filter notifikasi 48 jam secara tampilan
+        .filter(n => !n.expiresAt || n.expiresAt > now)
+        .sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
         
         setNotifications(list);
         
+        // Auto mark as read after 3s viewing
         const unreadIds = Object.entries(val).filter(([id, data]: [string, any]) => !data.read).map(([id]) => id);
         if (unreadIds.length > 0) {
            const updates: any = {};
@@ -57,8 +62,11 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   }, [currentUser]);
 
   const handleNotificationClick = (notif: Notification) => {
+    // Mark as read immediately
     update(ref(rtdb, `notifications/${currentUser?.id}/${notif.id}`), { read: true });
+    
     if (setTargetStatusId && onNavigate) {
+      // Set target ID untuk diproses di StatusView (scroll & highlight)
       setTargetStatusId(notif.statusId);
       onNavigate('status'); 
     }

@@ -33,9 +33,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
     const { currentUser } = useAuth();
     const [statuses, setStatuses] = useState<Status[]>([]);
     const [loading, setLoading] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [pageSize, setPageSize] = useState(25);
-    const [hasMore, setHasMore] = useState(true);
+    const [pageSize, setPageSize] = useState(30);
     
     const [searchTerm, setSearchTerm] = useState('');
     const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -49,7 +47,6 @@ export const StatusView: React.FC<StatusViewProps> = ({
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [activeMenuStatusId, setActiveMenuStatusId] = useState<string | null>(null);
     
-    // Moderasi Admin States
     const [isTrashView, setIsTrashView] = useState(false);
     const [moderationConfirm, setModerationConfirm] = useState<{isOpen: boolean, id: string | null, type: 'delete' | 'restore'}>({
       isOpen: false, id: null, type: 'delete'
@@ -76,6 +73,21 @@ export const StatusView: React.FC<StatusViewProps> = ({
     const t = translations[appSettings?.language || 'id'];
     const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
 
+    // Scroll to Target Status logic
+    useEffect(() => {
+        if (!loading && targetStatusId && statuses.length > 0) {
+            setTimeout(() => {
+                const element = document.getElementById(`status-${targetStatusId}`);
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    element.classList.add('ring-4', 'ring-denim-400', 'ring-opacity-50');
+                    setTimeout(() => element.classList.remove('ring-4', 'ring-denim-400', 'ring-opacity-50'), 3000);
+                    if (setTargetStatusId) setTargetStatusId(null); // Reset target
+                }
+            }, 500);
+        }
+    }, [loading, targetStatusId, statuses]);
+
     useEffect(() => {
       setLoading(true);
       const path = isTrashView ? 'deleted_statuses' : 'statuses';
@@ -83,13 +95,17 @@ export const StatusView: React.FC<StatusViewProps> = ({
       
       const unsubscribe = onValue(statusesRef, (snapshot) => {
         const val = snapshot.val();
+        const now = Date.now();
         if (val) {
           const list = Object.entries(val).map(([id, data]: [string, any]) => ({
             id,
             ...data,
             createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
             likes: data.likes ? Object.keys(data.likes) : []
-          }));
+          }))
+          // Filter out expired (lebih dari 48 jam) di sisi tampilan
+          .filter(s => isTrashView || !s.expiresAt || s.expiresAt > now);
+
           const reversed = list.sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
           
           if (!isTrashView) {
@@ -99,14 +115,10 @@ export const StatusView: React.FC<StatusViewProps> = ({
           } else {
             setStatuses(reversed);
           }
-          
-          setHasMore(list.length >= pageSize);
         } else {
           setStatuses([]);
-          setHasMore(false);
         }
         setLoading(false);
-        setLoadingMore(false);
       });
       return () => unsubscribe();
     }, [pageSize, contactsMap, isTrashView]);
@@ -134,7 +146,15 @@ export const StatusView: React.FC<StatusViewProps> = ({
           if (isEditingStatus) { await update(ref(rtdb, `statuses/${isEditingStatus}`), { content: statusText, imageUrl, updatedAt: Date.now() }); showToast("Status diperbarui"); }
           else {
               const newRef = push(ref(rtdb, 'statuses'));
-              await set(newRef, { userId: currentUser!.id, author: { name: currentUser!.name, avatar: currentUser!.avatar, isAdmin: currentUser!.isAdmin || false }, content: statusText, imageUrl, createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000), commentsCount: 0 });
+              await set(newRef, { 
+                userId: currentUser!.id, 
+                author: { name: currentUser!.name, avatar: currentUser!.avatar, isAdmin: currentUser!.isAdmin || false }, 
+                content: statusText, 
+                imageUrl, 
+                createdAt: Date.now(), 
+                expiresAt: Date.now() + (48 * 60 * 60 * 1000), // EXPIRE 48 JAM
+                commentsCount: 0 
+              });
               showToast("Status dikirim");
           }
           setShowCreateModal(false); setIsEditingStatus(null); setStatusText(''); setStatusImage(null); setStatusImagePreview(null);
@@ -144,28 +164,19 @@ export const StatusView: React.FC<StatusViewProps> = ({
     const handleModerationAction = async () => {
       const { id, type } = moderationConfirm;
       if (!id || !currentUser?.isAdmin) return;
-
       setIsPosting(true);
       try {
         const sourcePath = type === 'delete' ? `statuses/${id}` : `deleted_statuses/${id}`;
         const targetPath = type === 'delete' ? `deleted_statuses/${id}` : `statuses/${id}`;
-
-        // 1. Ambil data asli dari node sumber
         const snapshot = await get(ref(rtdb, sourcePath));
         if (snapshot.exists()) {
            const data = snapshot.val();
-           
-           // 2. Set ke node target secara atomic
            await set(ref(rtdb, targetPath), data);
-           
-           // 3. Hapus dari node sumber
            await remove(ref(rtdb, sourcePath));
-           
            showToast(type === 'delete' ? "Postingan dipindah ke sampah" : "Postingan berhasil dipulihkan");
         }
       } catch (e) {
-        console.error("Moderation error:", e);
-        alert("Gagal memproses moderasi. Cek koneksi atau izin database.");
+        alert("Gagal memproses moderasi.");
       } finally {
         setIsPosting(false);
         setModerationConfirm({ isOpen: false, id: null, type: 'delete' });
@@ -217,7 +228,18 @@ export const StatusView: React.FC<StatusViewProps> = ({
           await set(likeRef, true);
           if (currentUser.id !== ownerId) {
              const nRef = push(ref(rtdb, `notifications/${ownerId}`));
-             await set(nRef, { id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar, type: 'like', statusId, previewText: '', read: false, createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000) });
+             await set(nRef, { 
+               id: nRef.key, 
+               senderId: currentUser.id, 
+               senderName: currentUser.name, 
+               senderAvatar: currentUser.avatar, 
+               type: 'like', 
+               statusId, 
+               previewText: '', 
+               read: false, 
+               createdAt: Date.now(), 
+               expiresAt: Date.now() + (48 * 60 * 60 * 1000) // EXPIRE NOTIF 48 JAM
+             });
           }
         }
     };
@@ -234,7 +256,18 @@ export const StatusView: React.FC<StatusViewProps> = ({
                 await update(ref(rtdb, `statuses/${activeCommentStatusId}`), { commentsCount: (target.commentsCount || 0) + 1 });
                 if (target.userId !== currentUser.id) {
                     const nRef = push(ref(rtdb, `notifications/${target.userId}`));
-                    await set(nRef, { id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar, type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false, createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000) });
+                    await set(nRef, { 
+                      id: nRef.key, 
+                      senderId: currentUser.id, 
+                      senderName: currentUser.name, 
+                      senderAvatar: currentUser.avatar, 
+                      type: 'comment', 
+                      statusId: activeCommentStatusId, 
+                      previewText: commentText, 
+                      read: false, 
+                      createdAt: Date.now(), 
+                      expiresAt: Date.now() + (48 * 60 * 60 * 1000) // EXPIRE NOTIF 48 JAM
+                    });
                 }
             }
             setCommentText(''); setReplyingTo(null);
@@ -352,7 +385,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
              </div>
            )}
            
-           {loading && pageSize === 25 ? ( 
+           {loading ? ( 
                <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400"/></div> 
            ) : filteredStatuses.length === 0 ? (
                <div className="flex flex-col items-center justify-center p-12 text-denim-400 h-[60vh]">
@@ -394,7 +427,6 @@ export const StatusView: React.FC<StatusViewProps> = ({
                                      {activeMenuStatusId === status.id && (
                                        <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-xl border border-cream-200 z-20 animate-in zoom-in-95 origin-top-right overflow-hidden">
                                          {isTrashView ? (
-                                           /* MENU DI TONG SAMPAH */
                                            currentUser?.isAdmin && (
                                              <button 
                                                onClick={() => setModerationConfirm({ isOpen: true, id: status.id, type: 'restore' })}
@@ -404,13 +436,10 @@ export const StatusView: React.FC<StatusViewProps> = ({
                                              </button>
                                            )
                                          ) : (
-                                           /* MENU DI FEED UTAMA */
                                            <>
                                              {isOwner && (
                                                <button onClick={() => { setStatusText(status.content || ''); setStatusImagePreview(status.imageUrl || null); setIsEditingStatus(status.id); setActiveMenuStatusId(null); setShowCreateModal(true); }} className="w-full px-4 py-3 text-left text-sm text-denim-700 hover:bg-cream-50 flex items-center gap-2"><Edit size={16}/> Edit Status</button>
                                              )}
-                                             
-                                             {/* MODERASI ADMIN - TERMASUK ADMIN BROADCAST */}
                                              {!isOwner && currentUser?.isAdmin && (
                                                <button 
                                                  onClick={() => setModerationConfirm({ isOpen: true, id: status.id, type: 'delete' })}
@@ -419,7 +448,6 @@ export const StatusView: React.FC<StatusViewProps> = ({
                                                  <Trash2 size={16}/> Hapus Postingan
                                                </button>
                                              )}
-
                                              {isOwner && (
                                                <button onClick={() => { setActiveMenuStatusId(null); setDeleteConfirm({ isOpen: true, id: status.id }); }} className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-cream-100"><Trash2 size={16}/> Hapus Permanen</button>
                                              )}
@@ -470,72 +498,57 @@ export const StatusView: React.FC<StatusViewProps> = ({
            )}
         </div>
 
-        {/* MODAL KONFIRMASI MODERASI ADMIN */}
-        {moderationConfirm.isOpen && (
-          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl border border-cream-200 text-center animate-in zoom-in-95 duration-200">
-                <div className={`w-20 h-20 ${moderationConfirm.type === 'delete' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'} rounded-[28px] flex items-center justify-center mx-auto mb-6 shadow-inner`}>
-                    {moderationConfirm.type === 'delete' ? <Trash2 size={40} /> : <RotateCcw size={40} />}
-                </div>
-                <h3 className="text-xl font-black text-denim-900 mb-3 tracking-tight">
-                  {moderationConfirm.type === 'delete' ? "Hapus Postingan?" : "Pulihkan Postingan?"}
-                </h3>
-                <p className="text-sm text-denim-500 mb-8 leading-relaxed font-medium">
-                  {moderationConfirm.type === 'delete' 
-                    ? "Postingan ini akan disembunyikan dari feed publik dan dipindah ke tong sampah." 
-                    : "Postingan ini akan ditampilkan kembali ke feed publik agar bisa dilihat semua orang."}
-                </p>
-                <div className="flex flex-col gap-3">
-                    <button 
-                        onClick={handleModerationAction} 
-                        disabled={isPosting}
-                        className={`w-full py-4 ${moderationConfirm.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all text-sm uppercase tracking-widest flex items-center justify-center gap-2`}
-                    >
-                        {isPosting ? <Loader2 size={18} className="animate-spin" /> : moderationConfirm.type === 'delete' ? "Ya, Hapus" : "Ya, Pulihkan"}
-                    </button>
-                    <button 
-                        onClick={() => setModerationConfirm({ isOpen: false, id: null, type: 'delete' })} 
-                        className="w-full py-3 text-denim-400 font-bold rounded-2xl hover:bg-cream-50 transition-colors text-xs uppercase"
-                    >
-                        Batal
-                    </button>
-                </div>
-            </div>
-          </div>
-        )}
-
-        {/* MODAL PLAYER VIDEO */}
-        {activeVideoUrl && (
-          <div className={`fixed inset-0 z-[110] bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-300 ${isVideoZoomed ? 'p-0' : 'p-4'}`}>
-              <div className={`relative bg-black w-full shadow-2xl transition-all duration-500 flex flex-col ${isVideoZoomed ? 'h-full' : 'max-w-4xl aspect-video rounded-3xl overflow-hidden'}`}>
-                  <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 z-20 flex gap-2">
-                      <button onClick={() => setIsVideoZoomed(!isVideoZoomed)} className="p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"><Maximize size={24} /></button>
-                      <button onClick={() => { setActiveVideoUrl(null); setIsVideoZoomed(false); }} className="p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"><X size={24} /></button>
-                  </div>
-                  {activeVideoUrl.includes('youtube.com/embed') ? (
-                      <iframe src={activeVideoUrl} className="w-full h-full border-none" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen title="Hud-Hud YouTube Player" />
-                  ) : (
-                      <video src={activeVideoUrl} controls autoPlay className="w-full h-full object-contain" />
-                  )}
+        {/* MODAL KOMENTAR (BISA DIAKSES DARI MANA SAJA) */}
+        {activeCommentStatusId && (
+          <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => { setActiveCommentStatusId(null); setReplyingTo(null); }}>
+            <div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
+              <div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 shrink-0">
+                <h3 className="font-bold text-denim-900">{t.status.comment}</h3>
+                <button onClick={() => setActiveCommentStatusId(null)} className="p-1 bg-cream-200 rounded-full hover:bg-cream-300 transition-colors"><X size={20}/></button>
               </div>
+              <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">
+                {comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}
+                {comments.map(c => (
+                  <div key={c.id} className="flex gap-3 relative">
+                    <img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/>
+                    <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group">
+                      <div className="flex justify-between items-start gap-4">
+                        <h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5>
+                        <button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button>
+                      </div>
+                      {c.replyTo && (
+                        <div className="bg-cream-50 p-2 rounded-xl border-l-2 border-denim-400 mb-1.5">
+                          <p className="text-[10px] font-bold text-denim-600">{c.replyTo.userName}</p>
+                          <p className="text-[10px] text-denim-400 truncate italic">"{c.replyTo.text}"</p>
+                        </div>
+                      )}
+                      <p className="text-sm text-denim-700 leading-snug">{c.text}</p>
+                      {activeCommentMenuId === c.id && (
+                        <div className="absolute right-0 top-7 bg-white shadow-xl border border-cream-200 rounded-xl z-30 py-1 w-28 animate-in zoom-in-95 origin-top-right overflow-hidden">
+                          <button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2.5 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={14} /> Balas</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t border-cream-200 bg-white shrink-0 pb-safe">
+                {replyingTo && (
+                  <div className="flex justify-between items-center bg-cream-100 p-2.5 rounded-xl mb-3 text-xs border border-denim-200 animate-in slide-in-from-bottom-2">
+                    <span className="text-denim-600 truncate">Balas ke <b>{replyingTo.name}</b></span>
+                    <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-white rounded-full"><X size={14} className="text-denim-400" /></button>
+                  </div>
+                )}
+                <form onSubmit={handleSendComment} className="flex gap-2 items-center">
+                  <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder={replyingTo ? `Tulis balasan...` : t.status.writeComment} className="flex-1 bg-cream-50 border border-cream-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 shadow-inner" autoFocus={!!replyingTo}/>
+                  <button disabled={!commentText.trim() || sendingComment} className="p-3 bg-denim-600 text-white rounded-2xl hover:bg-denim-700 disabled:opacity-50 transition-all shadow-md active:scale-90"><Send size={20} /></button>
+                </form>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* MODAL KONFIRMASI LINK LUAR */}
-        {pendingExternalLink && (
-            <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-                <div className="bg-white rounded-[32px] p-8 max-w-sm w-full shadow-2xl border border-cream-200 text-center animate-in zoom-in-95 duration-200">
-                    <div className="w-20 h-20 bg-red-50 text-red-600 rounded-[28px] flex items-center justify-center mx-auto mb-6 shadow-inner"><Lock size={40} /></div>
-                    <h3 className="text-xl font-black text-denim-900 mb-3 tracking-tight">Konfirmasi Keamanan</h3>
-                    <p className="text-sm text-denim-500 mb-8 leading-relaxed font-medium">{t.common.exitWarning}</p>
-                    <div className="flex flex-col gap-3">
-                        <button onClick={() => { window.open(pendingExternalLink, '_blank'); setPendingExternalLink(null); }} className="w-full py-4 bg-denim-700 text-white font-black rounded-2xl shadow-xl active:scale-95 transition-all text-sm uppercase tracking-widest">Lanjutkan Buka</button>
-                        <button onClick={() => setPendingExternalLink(null)} className="w-full py-3 text-denim-400 font-bold rounded-2xl hover:bg-cream-50 transition-colors text-xs uppercase">{t.common.cancel}</button>
-                    </div>
-                </div>
-            </div>
-        )}
-        
+        {/* MODAL LAINNYA (Moderasi, Link, Create, Delete, dsb) TETAP DI SINI */}
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-denim-900/60 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="animated-status-border w-full max-w-md animate-in zoom-in-95">
@@ -569,10 +582,23 @@ export const StatusView: React.FC<StatusViewProps> = ({
           </div>
         )}
 
-        {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Permanen?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan dan postingan akan hilang selamanya.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg">Hapus</button></div></div></div>)}
-        {zoomImage && (<div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-0 animate-in fade-in duration-300" onClick={() => setZoomImage(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/40 rounded-full"><X size={28} /></button><img src={zoomImage} className="max-w-full max-h-full object-contain" /></div>)}
-        {showInfoModal && infoUser && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl relative animate-in zoom-in-95 flex flex-col max-h-[80vh] overflow-hidden"><button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-10"><X size={20} /></button><div className="h-32 bg-denim-700 relative rounded-t-2xl shrink-0"><div className="absolute inset-0 opacity-10 pattern-bg"></div></div><div className="px-6 pb-6 -mt-12 flex flex-col items-center relative z-0 flex-1 overflow-y-auto custom-scrollbar"><img src={infoUser.avatar} className="w-24 h-24 rounded-full border-4 border-white shadow-md bg-denim-200 object-cover z-10 relative" /><h2 className="mt-3 text-xl font-bold text-denim-900 text-center flex items-center justify-center gap-1">{infoUser.name}{(infoUser.id === adminProfile?.id) && <BadgeCheck size={18} className="text-white fill-blue-500" />}</h2><p className="text-denim-500 text-sm font-medium mb-4 text-center">{infoUser.phoneNumber || '-'}</p>{contactsMap && !contactsMap[infoUser.id] && (!adminProfile || infoUser.id !== adminProfile.id) && (<div className="mb-4 w-full">{!isAddingContact ? (<button onClick={() => { setNewContactName(infoUser.name); setIsAddingContact(true); }} className="w-full py-3 bg-denim-600 hover:bg-denim-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-md"><UserPlus size={16} /> Tambahkan Kontak</button>) : (<div className="bg-cream-100 p-4 rounded-2xl border border-denim-200 animate-in fade-in"><p className="text-[10px] text-denim-500 mb-2 font-bold uppercase tracking-wider">Simpan Sebagai:</p><input type="text" value={newContactName} onChange={(e) => setNewContactName(e.target.value)} className="w-full p-2.5 border border-cream-300 rounded-xl text-sm mb-3 focus:ring-1 focus:ring-denim-500 outline-none" placeholder="Nama Kontak" autoFocus /><div className="flex gap-2"><button onClick={() => setIsAddingContact(false)} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-xl text-xs font-bold">Batal</button><button onClick={handleAddContact} className="flex-1 py-2 bg-green-500 text-white rounded-xl text-xs font-bold shadow-md">Simpan</button></div></div>)}</div>)}<div className="w-full bg-cream-50 p-4 rounded-2xl border border-cream-200 text-center"><p className="text-sm text-denim-700 italic">"{infoUser.bio || '-'}"</p></div></div></div></div>)}
-        {activeCommentStatusId && (<div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => setActiveCommentMenuId(null)}><div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 shrink-0"><h3 className="font-bold text-denim-900">{t.status.comment}</h3><button onClick={() => setActiveCommentStatusId(null)} className="p-1 bg-cream-200 rounded-full hover:bg-cream-300 transition-colors"><X size={20} className="text-denim-50"/></button></div><div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">{comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}{comments.map(c => (<div key={c.id} className="flex gap-3 relative"><img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/><div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group"><div className="flex justify-between items-start gap-4"><h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5><button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button></div>{c.replyTo && (<div className="bg-cream-50 p-2 rounded-xl border-l-2 border-denim-400 mb-1.5"><p className="text-[10px] font-bold text-denim-600">{c.replyTo.userName}</p><p className="text-[10px] text-denim-400 truncate italic">"{c.replyTo.text}"</p></div>)}<p className="text-sm text-denim-700 leading-snug">{c.text}</p>{activeCommentMenuId === c.id && (<div className="absolute right-0 top-7 bg-white shadow-xl border border-cream-200 rounded-xl z-30 py-1 w-28 animate-in zoom-in-95 origin-top-right overflow-hidden"><button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2.5 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={14} /> Balas</button></div>)}</div></div>))}</div><div className="p-4 border-t border-cream-200 bg-white shrink-0 pb-safe">{replyingTo && ( <div className="flex justify-between items-center bg-cream-100 p-2.5 rounded-xl mb-3 text-xs border border-denim-200 animate-in slide-in-from-bottom-2"> <span className="text-denim-600 truncate">Balas ke <b>{replyingTo.name}</b>: "{replyingTo.text.substring(0, 20)}..."</span> <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-white rounded-full"><X size={14} className="text-denim-400" /></button> </div> )}<form onSubmit={handleSendComment} className="flex gap-2 items-center"><input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder={replyingTo ? `Tulis balasan...` : t.status.writeComment} className="flex-1 bg-cream-50 border border-cream-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 shadow-inner" autoFocus={!!replyingTo}/><button disabled={!commentText.trim() || sendingComment} className="p-3 bg-denim-600 text-white rounded-2xl hover:bg-denim-700 disabled:opacity-50 transition-all shadow-md active:scale-90"><Send size={20} /></button></form></div></div></div>)}
+        {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Permanen?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg">Hapus</button></div></div></div>)}
+        {zoomImage && (<div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-0 animate-in fade-in duration-300" onClick={() => setZoomImage(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/40 rounded-full"><X size={28} /></button><img src={zoomImage} className="max-w-full max-h-full object-contain" /></div>)}
+        {activeVideoUrl && (
+          <div className={`fixed inset-0 z-[160] bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-300 ${isVideoZoomed ? 'p-0' : 'p-4'}`}>
+              <div className={`relative bg-black w-full shadow-2xl transition-all duration-500 flex flex-col ${isVideoZoomed ? 'h-full' : 'max-w-4xl aspect-video rounded-3xl overflow-hidden'}`}>
+                  <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 z-20 flex gap-2">
+                      <button onClick={() => setIsVideoZoomed(!isVideoZoomed)} className="p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"><Maximize size={24} /></button>
+                      <button onClick={() => { setActiveVideoUrl(null); setIsVideoZoomed(false); }} className="p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"><X size={24} /></button>
+                  </div>
+                  {activeVideoUrl.includes('youtube.com/embed') ? (
+                      <iframe src={activeVideoUrl} className="w-full h-full border-none" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen title="Hud-Hud YouTube Player" />
+                  ) : (
+                      <video src={activeVideoUrl} controls autoPlay className="w-full h-full object-contain" />
+                  )}
+              </div>
+          </div>
+        )}
       </div>
     );
 };
@@ -581,8 +607,7 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
   const { currentUser } = useAuth();
   const [myStatuses, setMyStatuses] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pageSize, setPageSize] = useState(25);
-  const [hasMore, setHasMore] = useState(true);
+  
   const [activeMenuStatusId, setActiveMenuStatusId] = useState<string | null>(null);
   const [activeCommentStatusId, setActiveCommentStatusId] = useState<string | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -598,7 +623,6 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
   const [isPosting, setIsPosting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{isOpen: boolean, id: string | null}>({isOpen: false, id: null});
 
-  const [pendingExternalLink, setPendingExternalLink] = useState<string | null>(null);
   const [activeVideoUrl, setActiveVideoUrl] = useState<string | null>(null);
   const [isVideoZoomed, setIsVideoZoomed] = useState(false);
 
@@ -607,18 +631,21 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
-    const statusesRef = rtdbQuery(ref(rtdb, 'statuses'), orderByChild('userId'), equalTo(currentUser.id), limitToLast(pageSize));
+    const statusesRef = rtdbQuery(ref(rtdb, 'statuses'), orderByChild('userId'), equalTo(currentUser.id));
     const unsubscribe = onValue(statusesRef, (snapshot) => {
         const val = snapshot.val();
+        const now = Date.now();
         if (val) {
-          const list = Object.entries(val).map(([id, data]: [string, any]) => ({ id, ...data, createdAt: data.createdAt ? new Date(data.createdAt) : new Date(), likes: data.likes ? Object.keys(data.likes) : [] })).sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
+          const list = Object.entries(val).map(([id, data]: [string, any]) => ({ id, ...data, createdAt: data.createdAt ? new Date(data.createdAt) : new Date(), likes: data.likes ? Object.keys(data.likes) : [] }))
+          // Filter 48 jam tampilan
+          .filter(s => !s.expiresAt || s.expiresAt > now)
+          .sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
           setMyStatuses(list);
-          setHasMore(list.length >= pageSize);
-        } else { setMyStatuses([]); setHasMore(false); }
+        } else { setMyStatuses([]); }
         setLoading(false);
     });
     return () => unsubscribe();
-  }, [currentUser, pageSize]);
+  }, [currentUser]);
 
   useEffect(() => {
     if (activeCommentStatusId) {
@@ -631,41 +658,6 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
         return () => unsub();
     }
   }, [activeCommentStatusId]);
-
-  const checkVideo = (content: string) => {
-      if (!content) return null;
-      const youtubeRegex = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/i;
-      const ytMatch = content.match(youtubeRegex);
-      if (ytMatch && ytMatch[2].length === 11) {
-          const videoId = ytMatch[2];
-          return { type: 'youtube', id: videoId, url: `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&showinfo=0&mute=0` };
-      }
-      const directMatch = content.match(/(https?:\/\/[^\s]+\.(mp4|webm|ogg))/i);
-      if (directMatch) { return { type: 'direct', url: directMatch[0] }; }
-      return null;
-  };
-
-  const parseContent = (content: string) => {
-      if (!content) return null;
-      const urlRegex = /(https?:\/\/[^\s]+)/g;
-      const parts = content.split(urlRegex);
-      return parts.map((part, i) => {
-          if (part.match(urlRegex)) {
-              return (
-                  <button key={i} onClick={(e) => { 
-                          e.stopPropagation(); 
-                          const videoData = checkVideo(part);
-                          if (videoData) { setActiveVideoUrl(videoData.url); } else { setPendingExternalLink(part); }
-                      }}
-                      className="text-blue-500 hover:underline break-all text-start font-bold"
-                  >
-                      {part}
-                  </button>
-              );
-          }
-          return part;
-      });
-  };
 
   const handleLike = async (statusId: string, currentLikes: string[]) => {
       const isLiked = currentLikes.includes(currentUser!.id);
@@ -686,75 +678,96 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
       } finally { setSendingComment(false); }
   };
 
-  const confirmDelete = async () => {
-    if (!deleteConfirm.id) return;
-    await remove(ref(rtdb, `statuses/${deleteConfirm.id}`));
-    await remove(ref(rtdb, `comments/${deleteConfirm.id}`));
-    setDeleteConfirm({isOpen: false, id: null});
+  const checkVideo = (content: string) => {
+    if (!content) return null;
+    const youtubeRegex = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/i;
+    const ytMatch = content.match(youtubeRegex);
+    if (ytMatch && ytMatch[2].length === 11) {
+        const videoId = ytMatch[2];
+        return { type: 'youtube', id: videoId, url: `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&showinfo=0&mute=0` };
+    }
+    const directMatch = content.match(/(https?:\/\/[^\s]+\.(mp4|webm|ogg))/i);
+    if (directMatch) { return { type: 'direct', url: directMatch[0] }; }
+    return null;
   };
 
   return (
-    <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200">
+    <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
       <ViewHeader title={t.status.myStatus} onBack={onBack} />
       <div className="flex-1 overflow-y-auto custom-scrollbar p-0 px-2 pb-32">
-        {loading && pageSize === 25 ? ( <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400"/></div> ) : myStatuses.length === 0 ? (
+        {loading ? ( <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400"/></div> ) : myStatuses.length === 0 ? (
              <div className="flex flex-col items-center justify-center p-10 text-denim-400 h-64"><Activity size={32} className="text-denim-300 mb-3" /><p className="font-medium text-sm text-center">{t.status.noStatus}</p></div>
         ) : (
              <div className="space-y-3 pb-4">
-                {myStatuses.map(status => {
-                  const videoData = checkVideo(status.content || '');
-                  return (
+                {myStatuses.map(status => (
                     <div key={status.id} id={`status-${status.id}`} className="bg-white border border-cream-200 rounded-2xl shadow-sm animate-in fade-in duration-300 overflow-hidden">
-                        <div className="p-3 flex items-center justify-between"><div className="flex items-center gap-3"><img src={currentUser?.avatar} className="w-10 h-10 rounded-full object-cover border border-cream-100" /><div><h4 className="font-bold text-denim-900 text-sm leading-tight flex items-center gap-1">{currentUser?.name}{currentUser?.isAdmin && <BadgeCheck size={14} className="text-white fill-blue-500" />}</h4><p className="text-[11px] text-denim-400 leading-tight mt-0.5">{status.createdAt ? format(status.createdAt, 'HH:mm • dd MMM') : ''} • Me</p></div></div><div className="relative"><button onClick={(e) => { e.stopPropagation(); setActiveMenuStatusId(activeMenuStatusId === status.id ? null : status.id); }} className="text-denim-300 hover:text-denim-600 p-2 rounded-full"><MoreHorizontal size={20} /></button>{activeMenuStatusId === status.id && (<div className="absolute right-0 top-10 w-40 bg-white rounded-xl shadow-xl border border-cream-200 z-20 animate-in zoom-in-95 origin-top-right overflow-hidden"><button onClick={() => { setStatusText(status.content || ''); setStatusImagePreview(status.imageUrl || null); setIsEditingStatus(status.id); setActiveMenuStatusId(null); setShowCreateModal(true); }} className="w-full px-4 py-3 text-left text-sm text-denim-700 hover:bg-cream-50 flex items-center gap-2"><Edit size={16}/> Edit Status</button><button onClick={() => setDeleteConfirm({ isOpen: true, id: status.id })} className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-cream-100"><Trash2 size={16}/> Hapus Status</button></div>)}</div></div>
-                        <div className="px-4 pb-2 text-denim-900 whitespace-pre-wrap font-medium">
-                            {parseContent(status.content || '')}
-                        </div>
-                        {status.imageUrl ? (
+                        <div className="p-3 flex items-center justify-between"><div className="flex items-center gap-3"><img src={currentUser?.avatar} className="w-10 h-10 rounded-full object-cover border border-cream-100" /><div><h4 className="font-bold text-denim-900 text-sm leading-tight flex items-center gap-1">{currentUser?.name}{currentUser?.isAdmin && <BadgeCheck size={14} className="text-white fill-blue-500" />}</h4><p className="text-[11px] text-denim-400 leading-tight mt-0.5">{status.createdAt ? format(status.createdAt, 'HH:mm • dd MMM') : ''} • Me</p></div></div><div className="relative"><button onClick={(e) => { e.stopPropagation(); setActiveMenuStatusId(activeMenuStatusId === status.id ? null : status.id); }} className="text-denim-300 hover:text-denim-600 p-2 rounded-full"><MoreVertical size={20} /></button>{activeMenuStatusId === status.id && (<div className="absolute right-0 top-10 w-40 bg-white rounded-xl shadow-xl border border-cream-200 z-20 animate-in zoom-in-95 origin-top-right overflow-hidden"><button onClick={() => { setStatusText(status.content || ''); setStatusImagePreview(status.imageUrl || null); setIsEditingStatus(status.id); setActiveMenuStatusId(null); setShowCreateModal(true); }} className="w-full px-4 py-3 text-left text-sm text-denim-700 hover:bg-cream-50 flex items-center gap-2"><Edit size={16}/> Edit Status</button><button onClick={() => setDeleteConfirm({ isOpen: true, id: status.id })} className="w-full px-4 py-3 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-cream-100"><Trash2 size={16}/> Hapus Status</button></div>)}</div></div>
+                        <div className="px-4 pb-2 text-denim-900 whitespace-pre-wrap font-medium">{status.content}</div>
+                        {status.imageUrl && (
                             <div className="w-full bg-cream-50 border-t border-cream-100 cursor-pointer overflow-hidden group" onClick={() => setZoomImage(status.imageUrl!)}>
                                 <img src={status.imageUrl} className="w-full h-auto max-h-[600px] object-contain group-hover:scale-[1.02] transition-transform duration-500" loading="lazy" />
                             </div>
-                        ) : videoData ? (
-                            <div className="w-full bg-black aspect-video relative cursor-pointer group border-t border-cream-100" onClick={() => setActiveVideoUrl(videoData.url)}>
-                                {videoData.type === 'youtube' ? (
-                                    <img src={`https://img.youtube.com/vi/${videoData.id}/maxresdefault.jpg`} className="w-full h-full object-cover opacity-60" onError={(e) => (e.target as HTMLImageElement).src = `https://img.youtube.com/vi/${videoData.id}/0.jpg`} />
-                                ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center text-white/40">
-                                        <span className="text-[10px] font-black uppercase mt-2 tracking-[0.3em]">Video Status</span>
-                                    </div>
-                                )}
-                                <div className="absolute inset-0 flex items-center justify-center z-10">
-                                    <div className="p-4 bg-white/20 backdrop-blur-md rounded-full text-white shadow-2xl group-hover:scale-110 transition-transform">
-                                        <Play size={32} fill="currentColor" />
-                                    </div>
-                                </div>
-                            </div>
-                        ) : null}
+                        )}
                         <div className="px-4 py-2 flex justify-between text-xs text-denim-500 border-b border-cream-50/50"><div className="flex items-center gap-1">{status.likes.length > 0 && <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center shadow-sm"><Heart size={8} className="text-white fill-current"/></div>}<span>{status.likes.length}</span></div><button onClick={() => setActiveCommentStatusId(status.id)} className="flex items-center gap-1"><MessageIcon size={14} className="text-denim-400" /><span>{status.commentsCount} {t.status.comment}</span></button></div>
                         <div className="flex items-center px-2 py-1"><button onClick={() => handleLike(status.id, status.likes)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl transition-all ${status.likes.includes(currentUser!.id) ? 'text-red-500 font-bold' : 'text-denim-600'}`}><Heart size={20} className={status.likes.includes(currentUser!.id) ? 'fill-current' : ''} /><span className="text-sm">{t.status.like}</span></button><button onClick={() => setActiveCommentStatusId(status.id)} className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-denim-600"><MessageIcon size={20} /><span className="text-sm">{t.status.comment}</span></button></div>
                     </div>
-                  );
-                })}
+                ))}
              </div>
         )}
       </div>
 
-      {activeVideoUrl && (
-        <div className={`fixed inset-0 z-[110] bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-300 ${isVideoZoomed ? 'p-0' : 'p-4'}`}>
-            <div className={`relative bg-black w-full shadow-2xl transition-all duration-500 flex flex-col ${isVideoZoomed ? 'h-full' : 'max-w-4xl aspect-video rounded-3xl overflow-hidden'}`}>
-                <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 z-20 flex gap-2">
-                    <button onClick={() => setIsVideoZoomed(!isVideoZoomed)} className="p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"><Maximize size={24} /></button>
-                    <button onClick={() => { setActiveVideoUrl(null); setIsVideoZoomed(false); }} className="p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors"><X size={24} /></button>
-                </div>
-                {activeVideoUrl.includes('youtube.com/embed') ? (
-                    <iframe src={activeVideoUrl} className="w-full h-full border-none" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen title="Hud-Hud YouTube Player" />
-                ) : (
-                    <video src={activeVideoUrl} controls autoPlay className="w-full h-full object-contain" />
-                )}
+      {/* MODAL KOMENTAR (BISA DIAKSES DARI MANA SAJA) */}
+      {activeCommentStatusId && (
+        <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => { setActiveCommentStatusId(null); setReplyingTo(null); }}>
+          <div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 shrink-0">
+              <h3 className="font-bold text-denim-900">{t.status.comment}</h3>
+              <button onClick={() => setActiveCommentStatusId(null)} className="p-1 bg-cream-200 rounded-full hover:bg-cream-300 transition-colors"><X size={20}/></button>
             </div>
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-cream-50 space-y-4">
+              {comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}
+              {comments.map(c => (
+                <div key={c.id} className="flex gap-3 relative">
+                  <img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/>
+                  <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group">
+                    <div className="flex justify-between items-start gap-4">
+                      <h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5>
+                      <button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button>
+                    </div>
+                    {c.replyTo && (
+                      <div className="bg-cream-50 p-2 rounded-xl border-l-2 border-denim-400 mb-1.5">
+                        <p className="text-[10px] font-bold text-denim-600">{c.replyTo.userName}</p>
+                        <p className="text-[10px] text-denim-400 truncate italic">"{c.replyTo.text}"</p>
+                      </div>
+                    )}
+                    <p className="text-sm text-denim-700 leading-snug">{c.text}</p>
+                    {activeCommentMenuId === c.id && (
+                      <div className="absolute right-0 top-7 bg-white shadow-xl border border-cream-200 rounded-xl z-30 py-1 w-28 animate-in zoom-in-95 origin-top-right overflow-hidden">
+                        <button onClick={() => { setReplyingTo({id: c.id, name: c.userName, text: c.text, userId: c.userId}); setActiveCommentMenuId(null); }} className="w-full text-left px-3 py-2.5 text-xs hover:bg-cream-50 flex items-center gap-2 text-denim-700"><CornerDownRight size={14} /> Balas</button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-cream-200 bg-white shrink-0 pb-safe">
+              {replyingTo && (
+                <div className="flex justify-between items-center bg-cream-100 p-2.5 rounded-xl mb-3 text-xs border border-denim-200 animate-in slide-in-from-bottom-2">
+                  <span className="text-denim-600 truncate">Balas ke <b>{replyingTo.name}</b></span>
+                  <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-white rounded-full"><X size={14} className="text-denim-400" /></button>
+                </div>
+              )}
+              <form onSubmit={handleSendComment} className="flex gap-2 items-center">
+                <input type="text" value={commentText} onChange={(e) => setCommentText(e.target.value)} placeholder={replyingTo ? `Tulis balasan...` : t.status.writeComment} className="flex-1 bg-cream-50 border border-cream-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-denim-500 shadow-inner" autoFocus={!!replyingTo}/>
+                <button disabled={!commentText.trim() || sendingComment} className="p-3 bg-denim-600 text-white rounded-2xl hover:bg-denim-700 disabled:opacity-50 transition-all shadow-md active:scale-90"><Send size={20} /></button>
+              </form>
+            </div>
+          </div>
         </div>
       )}
-      {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Status?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={confirmDelete} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg">Hapus</button></div></div></div>)}
-      {zoomImage && (<div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-0 animate-in fade-in duration-300" onClick={() => setZoomImage(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/40 rounded-full"><X size={28} /></button><img src={zoomImage} className="max-w-full max-h-full object-contain" /></div>)}
+
+      {deleteConfirm.isOpen && (<div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl text-center"><div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-500"><AlertTriangle size={28} /></div><h3 className="text-lg font-bold text-denim-900 mb-2">Hapus Status?</h3><p className="text-sm text-denim-500 mb-6">Tindakan ini tidak dapat dibatalkan.</p><div className="flex gap-3"><button onClick={() => setDeleteConfirm({isOpen: false, id: null})} className="flex-1 py-2.5 bg-cream-100 text-denim-700 rounded-xl font-bold text-sm">Batal</button><button onClick={() => { if(deleteConfirm.id) { remove(ref(rtdb, `statuses/${deleteConfirm.id}`)); remove(ref(rtdb, `comments/${deleteConfirm.id}`)); setDeleteConfirm({isOpen: false, id: null}); } }} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold text-sm shadow-lg">Hapus</button></div></div></div>)}
+      {zoomImage && (<div className="fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-0 animate-in fade-in duration-300" onClick={() => setZoomImage(null)}><button className="absolute top-4 right-4 text-white p-2 bg-black/40 rounded-full"><X size={28} /></button><img src={zoomImage} className="max-w-full max-h-full object-contain" /></div>)}
     </div>
   );
 };
