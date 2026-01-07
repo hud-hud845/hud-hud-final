@@ -100,7 +100,14 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
     return unsubscribe;
   }, []);
 
+  const checkConnection = () => {
+    if (!navigator.onLine) {
+      throw { code: 'auth/network-request-failed', message: 'Miskin Ya Bro, Kok Gak terhubung ke internet sih?' };
+    }
+  };
+
   const loginWithGoogle = async () => {
+    checkConnection();
     const provider = new GoogleAuthProvider();
     try {
       await setPersistence(auth, browserLocalPersistence);
@@ -111,18 +118,17 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
   };
 
   const loginWithEmail = async (email: string, pass: string) => {
+    checkConnection();
     try {
       await setPersistence(auth, browserLocalPersistence);
       await signInWithEmailAndPassword(auth, email, pass);
     } catch (error: any) {
-      if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-        throw new Error("Email atau password salah.");
-      }
       throw error;
     }
   };
 
   const registerUser = async (data: RegisterData) => {
+    checkConnection();
     const { email, password, name, phoneNumber, bio, avatarFile } = data;
     let userCredential;
 
@@ -164,7 +170,7 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
       if (userCredential && userCredential.user) try { await deleteUser(userCredential.user); } catch (e) {}
       if (error.message === "nomor_hp_duplicate") throw new Error("Nomor HP telah digunakan.");
       if (error.code === 'auth/email-already-in-use') throw new Error("Email sudah terdaftar.");
-      throw new Error("Gagal mendaftar: " + error.message);
+      throw error;
     }
   };
 
@@ -181,6 +187,7 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
 
   const updateProfile = async (name: string, bio: string, phoneNumber: string, avatar?: string) => {
     if (!currentUser) return;
+    checkConnection();
     try {
       const userDocRef = doc(db, 'users', currentUser.id);
       const updateData: any = { name, bio, phoneNumber };
@@ -193,6 +200,7 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
 
   const updateUserEmail = async (newEmail: string, currentPassword: string) => {
     if (auth.currentUser && currentUser) {
+      checkConnection();
       try {
         const credential = EmailAuthProvider.credential(auth.currentUser.email || currentUser.email || '', currentPassword);
         await reauthenticateWithCredential(auth.currentUser, credential);
@@ -206,6 +214,7 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
 
   const updateUserPassword = async (newPassword: string, currentPassword: string) => {
     if (auth.currentUser && currentUser) {
+      checkConnection();
       try {
         const credential = EmailAuthProvider.credential(auth.currentUser.email || currentUser.email || '', currentPassword);
         await reauthenticateWithCredential(auth.currentUser, credential);

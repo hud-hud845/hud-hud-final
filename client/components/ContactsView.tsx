@@ -326,7 +326,6 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
             />
           </div>
           
-          {/* VIEW MODE DROPDOWN MEWAH */}
           <div className="relative">
             <button 
               onClick={() => setShowViewDropdown(!showViewDropdown)}
@@ -455,7 +454,7 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
         </div>
       )}
 
-      {/* --- LUXURY QR SCANNER VIEW --- */}
+      {/* QR SCANNER VIEW */}
       {showQrScanner && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 animate-in fade-in duration-300">
            <div className="w-full max-w-sm flex flex-col items-center">
@@ -467,121 +466,66 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
                     <X size={24} />
                  </button>
               </div>
-
               <div className="relative w-72 h-72 sm:w-80 sm:h-80 mb-10">
                 <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 border-amber-400 rounded-tl-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
                 <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 border-amber-400 rounded-tr-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
                 <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 border-amber-400 rounded-bl-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
                 <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 border-amber-400 rounded-br-3xl shadow-[0_0_15px_rgba(245,158,11,0.5)]"></div>
-                <div id="qr-reader" className="w-full h-full overflow-hidden rounded-[40px] bg-denim-900/50 relative border-2 border-white/5">
-                   <div className="qr-scan-line absolute left-0 right-0 top-0 z-20"></div>
-                </div>
+                <div id="qr-reader" className="w-full h-full overflow-hidden rounded-[40px] bg-denim-900/50 relative border-2 border-white/5"><div className="qr-scan-line absolute left-0 right-0 top-0 z-20"></div></div>
                 <div id="qr-reader-hidden" className="hidden"></div>
               </div>
-
-              <div className="w-full space-y-4">
-                 <button 
-                   onClick={() => qrUploadInputRef.current?.click()}
-                   className="w-full py-4 bg-white/10 hover:bg-white/20 text-white font-black rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest border border-white/5"
-                 >
-                    <ImageIcon size={20} /> UNGGAH DARI GALERI
-                    <input type="file" ref={qrUploadInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
-                 </button>
-              </div>
+              <button onClick={() => qrUploadInputRef.current?.click()} className="w-full py-4 bg-white/10 hover:bg-white/20 text-white font-black rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest border border-white/5"><ImageIcon size={20} /> UNGGAH DARI GALERI<input type="file" ref={qrUploadInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} /></button>
            </div>
         </div>
       )}
 
-      {/* --- MODAL INFO KONTAK --- */}
+      {/* MODAL TAMBAH KONTAK (DIOPTIMALKAN UNTUK ANDROID 13+) */}
       {showAddModal && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-denim-900/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white w-full max-w-sm rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-cream-200 flex justify-between items-center bg-cream-50">
-              <h3 className="font-black text-sm uppercase tracking-widest text-denim-900">{foundUser ? 'Info Kontak' : t.contacts.newContact}</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-cream-200 rounded-full transition-colors text-denim-700"><X size={20}/></button>
+          <div className="bg-white w-full max-w-sm max-h-[90vh] rounded-[32px] shadow-2xl overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-cream-200 flex justify-between items-center bg-cream-50 sticky top-0 z-10">
+              <h3 className="font-black text-xs uppercase tracking-widest text-denim-900">{foundUser ? 'Info Kontak' : t.contacts.newContact}</h3>
+              <button onClick={() => { setShowAddModal(false); resetModal(); }} className="p-1 hover:bg-cream-200 rounded-full transition-colors text-denim-700"><X size={20}/></button>
             </div>
             <div className="p-6">
               {searchingUser ? (
                  <div className="flex flex-col items-center justify-center py-10 gap-3">
-                   <Loader2 size={32} className="animate-spin text-denim-600" />
-                   <p className="text-xs font-bold text-denim-400 uppercase tracking-widest">Mencari User...</p>
+                   <Loader2 size={24} className="animate-spin text-denim-600" />
+                   <p className="text-[10px] font-bold text-denim-400 uppercase tracking-widest">Mencari User...</p>
                  </div>
               ) : foundUser ? (
                 <div className="animate-in slide-in-from-bottom-4 duration-300">
                   <div className="flex flex-col items-center mb-6">
-                    <div className="relative mb-4">
-                      <img src={foundUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(foundUser.name)}`} className="w-24 h-24 rounded-3xl border-4 border-white shadow-xl object-cover bg-denim-50" />
-                      {foundUser.isAdmin && (
-                        <div className="absolute -bottom-2 -right-2 bg-blue-500 text-white p-1 rounded-lg border-2 border-white shadow-lg">
-                          <BadgeCheck size={16} className="fill-current" />
-                        </div>
-                      )}
-                    </div>
-                    <p className="font-black text-denim-900 text-xl tracking-tight text-center">{foundUser.name}</p>
-                    <p className="text-xs font-bold text-denim-400 uppercase tracking-widest mt-1 mb-3">{foundUser.phoneNumber}</p>
-                    
-                    <div className="w-full bg-cream-50 p-4 rounded-2xl border border-cream-200 text-center mb-6">
-                       <p className="text-xs text-denim-700 italic font-medium">"{foundUser.bio || '-'}"</p>
-                    </div>
-
+                    <div className="relative mb-4"><img src={foundUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(foundUser.name)}`} className="w-20 h-20 rounded-[28px] border-4 border-white shadow-xl object-cover bg-denim-50" />{foundUser.isAdmin && <div className="absolute -bottom-1 -right-1 bg-blue-500 text-white p-1 rounded-lg border-2 border-white shadow-lg"><BadgeCheck size={14} className="fill-current" /></div>}</div>
+                    <p className="font-black text-denim-900 text-lg tracking-tight text-center">{foundUser.name}</p>
+                    <p className="text-[10px] font-bold text-denim-400 uppercase tracking-widest mt-1 mb-3">{foundUser.phoneNumber}</p>
+                    <div className="w-full bg-cream-50 p-4 rounded-2xl border border-cream-200 text-center mb-6"><p className="text-xs text-denim-700 italic font-medium">"{foundUser.bio || '-'}"</p></div>
                     {isAlreadyInContacts ? (
-                      <div className="w-full space-y-4">
-                         <div className="flex items-center justify-center gap-2 text-green-600 font-black text-[10px] uppercase tracking-widest bg-green-50 py-2 rounded-full border border-green-100">
-                           <CheckCircle2 size={14} /> Sudah Ada di Kontak
-                         </div>
-                         <button 
-                           onClick={() => { if(onStartChat) onStartChat(foundUser.id); setShowAddModal(false); }}
-                           className="w-full py-4 bg-denim-700 hover:bg-denim-800 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest"
-                         >
-                            <MessageSquare size={18} /> CHAT SEKARANG
-                         </button>
-                      </div>
+                      <div className="w-full space-y-4"><div className="flex items-center justify-center gap-2 text-green-600 font-black text-[10px] uppercase tracking-widest bg-green-50 py-2 rounded-full border border-green-100"><CheckCircle2 size={14} /> Sudah Ada di Kontak</div><button onClick={() => { if(onStartChat) onStartChat(foundUser.id); setShowAddModal(false); }} className="w-full py-4 bg-denim-700 hover:bg-denim-800 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest"><MessageSquare size={18} /> CHAT SEKARANG</button></div>
                     ) : (
-                      <div className="w-full space-y-4">
-                        <div className="text-left">
-                          <label className="text-[10px] font-black text-denim-400 uppercase mb-2 block tracking-widest ml-1">Simpan Sebagai</label>
-                          <input 
-                            type="text" 
-                            value={savedName} 
-                            onChange={(e) => setSavedName(e.target.value)} 
-                            className="w-full px-4 py-3 border border-cream-300 rounded-2xl bg-cream-50 focus:ring-2 focus:ring-denim-500 outline-none text-denim-900 font-bold shadow-inner" 
-                            placeholder="Nama Kontak"
-                          />
-                        </div>
-                        <button 
-                          onClick={handleSaveContact} 
-                          disabled={!savedName.trim()}
-                          className="w-full py-4 bg-denim-600 hover:bg-denim-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest disabled:opacity-50"
-                        >
-                          <UserPlus size={18} /> TAMBAH KONTAK
-                        </button>
-                      </div>
+                      <div className="w-full space-y-4"><div className="text-left"><label className="text-[9px] font-black text-denim-400 uppercase mb-2 block tracking-widest ml-1">Simpan Sebagai</label><input type="text" value={savedName} onChange={(e) => setSavedName(e.target.value)} className="w-full px-4 py-2.5 border border-cream-300 rounded-2xl bg-cream-50 focus:ring-2 focus:ring-denim-500 outline-none text-denim-900 font-bold shadow-inner" placeholder="Nama Kontak"/></div><button onClick={handleSaveContact} disabled={!savedName.trim()} className="w-full py-4 bg-denim-600 hover:bg-denim-700 text-white font-black rounded-2xl shadow-xl flex items-center justify-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest disabled:opacity-50"><UserPlus size={18} /> TAMBAH KONTAK</button></div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center py-6">
+                <div className="flex flex-col items-center py-2">
                   {searchError ? (
-                    <div className="text-center">
-                      <div className="w-12 h-12 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner"><AlertTriangle size={24}/></div>
-                      <p className="text-sm font-bold text-red-600 px-4">{searchError}</p>
-                      <button onClick={resetModal} className="mt-4 text-xs font-black text-denim-600 uppercase tracking-widest hover:underline">Coba Lagi</button>
-                    </div>
+                    <div className="text-center py-4"><div className="w-12 h-12 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner"><AlertTriangle size={24}/></div><p className="text-xs font-bold text-red-600 px-4">{searchError}</p><button onClick={resetModal} className="mt-4 text-[10px] font-black text-denim-600 uppercase tracking-widest hover:underline">Coba Lagi</button></div>
                   ) : (
                     <>
-                      <label className="text-[10px] font-black text-denim-400 uppercase mb-3 block tracking-widest">Masukkan Nomor HP</label>
+                      <label className="text-[9px] font-black text-denim-400 uppercase mb-3 block tracking-widest w-full text-left ml-1">Masukkan Nomor HP</label>
                       <div className="flex gap-2 w-full">
                         <input 
                           type="tel" 
                           value={searchPhone} 
                           onChange={(e) => setSearchPhone(e.target.value)} 
-                          className="flex-1 px-4 py-3 border border-cream-300 rounded-2xl bg-cream-50 focus:ring-2 focus:ring-denim-500 outline-none text-denim-900 font-bold shadow-inner placeholder-denim-200" 
+                          className="flex-1 px-4 py-2.5 border border-cream-300 rounded-2xl bg-cream-50 focus:ring-2 focus:ring-denim-500 outline-none text-denim-900 font-bold shadow-inner placeholder-denim-200 text-sm" 
                           placeholder="Contoh: 08123..." 
                           autoFocus
                           onKeyDown={(e) => e.key === 'Enter' && handleSearchUser()}
                         />
-                        <button onClick={handleSearchUser} disabled={searchingUser || !searchPhone} className="px-5 bg-denim-600 hover:bg-denim-700 text-white rounded-2xl shadow-lg disabled:opacity-50 transition-all active:scale-90">
-                          {searchingUser ? <Loader2 size={20} className="animate-spin"/> : <Search size={20} />}
+                        <button onClick={handleSearchUser} disabled={searchingUser || !searchPhone} className="px-4 bg-denim-600 hover:bg-denim-700 text-white rounded-2xl shadow-lg disabled:opacity-50 transition-all active:scale-90 flex items-center justify-center">
+                          {searchingUser ? <Loader2 size={18} className="animate-spin"/> : <Search size={18} />}
                         </button>
                       </div>
                     </>
@@ -594,29 +538,10 @@ export const ContactsView: React.FC<ContactsViewProps> = ({ onBack, onStartChat,
       )}
 
       {/* DIALOG KONFIRMASI HAPUS */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-[32px] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95">
-              <div className={`w-16 h-16 ${currentUser?.isAdmin ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'} rounded-[28px] flex items-center justify-center mx-auto mb-4 shadow-inner`}>
-                {currentUser?.isAdmin ? <ShieldAlert size={32} /> : <Trash2 size={32} />}
-              </div>
-              <h3 className="text-lg font-black text-denim-900 mb-2 tracking-tight">{currentUser?.isAdmin ? "Unregister User?" : "Hapus Kontak?"}</h3>
-              <p className="text-sm text-denim-500 mb-6 leading-relaxed font-medium">{currentUser?.isAdmin ? `Hapus ${selectedContactIds.size} pengguna permanen?` : `Anda akan menghapus ${selectedContactIds.size} kontak terpilih.`}</p>
-              <div className="flex flex-col gap-2">
-                <button onClick={handleDeleteSelected} disabled={isDeleting} className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">{isDeleting ? <Loader2 size={14} className="animate-spin" /> : "Ya, Hapus"}</button>
-                <button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="w-full py-3 text-denim-400 font-bold rounded-2xl hover:bg-cream-50 transition-colors text-xs uppercase">Batal</button>
-              </div>
-          </div>
-        </div>
-      )}
+      {showDeleteConfirm && (<div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-[32px] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in-95"><div className={`w-16 h-16 ${currentUser?.isAdmin ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'} rounded-[28px] flex items-center justify-center mx-auto mb-4 shadow-inner`}>{currentUser?.isAdmin ? <ShieldAlert size={32} /> : <Trash2 size={32} />}</div><h3 className="text-lg font-black text-denim-900 mb-2 tracking-tight">{currentUser?.isAdmin ? "Unregister User?" : "Hapus Kontak?"}</h3><p className="text-sm text-denim-500 mb-6 leading-relaxed font-medium">{currentUser?.isAdmin ? `Hapus ${selectedContactIds.size} pengguna permanen?` : `Anda akan menghapus ${selectedContactIds.size} kontak terpilih.`}</p><div className="flex flex-col gap-2"><button onClick={handleDeleteSelected} disabled={isDeleting} className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-all">{isDeleting ? <Loader2 size={14} className="animate-spin" /> : "Ya, Hapus"}</button><button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="w-full py-3 text-denim-400 font-bold rounded-2xl hover:bg-cream-100 transition-colors text-xs uppercase">Batal</button></div></div></div>)}
 
       {/* TOAST NOTIFICATION */}
-      {toastMessage && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[150] bg-denim-800 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-3 border border-white/10">
-          <CheckCircle2 size={18} className="text-green-400" />
-          <span className="text-sm font-bold tracking-tight">{toastMessage}</span>
-        </div>
-      )}
+      {toastMessage && (<div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[150] bg-denim-800 text-white px-6 py-3 rounded-full shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-3 border border-white/10"><CheckCircle2 size={18} className="text-green-400" /><span className="text-sm font-bold tracking-tight">{toastMessage}</span></div>)}
     </div>
   );
 };

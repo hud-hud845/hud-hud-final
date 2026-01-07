@@ -141,7 +141,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
   };
 
   const ProfileCardUI = ({ containerRef, isZoomed = false }: { containerRef?: React.RefObject<HTMLDivElement>, isZoomed?: boolean }) => {
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${currentUser?.id}&bgcolor=ffffff&color=0a2e4d&margin=1`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${currentUser?.id}&bgcolor=ffffff&color=0a2e4d&margin=1`;
+    const displayName = name || currentUser?.name || 'User';
 
     return (
       <div 
@@ -157,7 +158,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
         <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400/40 via-transparent to-transparent opacity-40"></div>
         
         {/* Card Header Section */}
-        <div className="flex justify-between items-start mb-3 sm:mb-6 relative z-10">
+        <div className="flex justify-between items-start mb-2 sm:mb-6 relative z-10">
           <div className="flex flex-col">
             <h1 className="text-base sm:text-2xl font-black tracking-[0.4em] text-amber-400 leading-none drop-shadow-md">HUD-HUD</h1>
             <p className="text-[6px] sm:text-[9px] font-black text-denim-200 mt-0.5 sm:mt-1 uppercase tracking-[0.3em] opacity-80">Official Member Card</p>
@@ -170,56 +171,65 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
           )}
         </div>
 
-        {/* Main Content Area: Photo + Data | QR CODE Center Right */}
-        <div className="flex justify-between items-center gap-2 sm:gap-4 relative z-10 h-[55%] sm:h-[60%]">
+        {/* Main Content Area: Centered vertically */}
+        <div className="flex justify-between items-center gap-3 sm:gap-6 relative z-10 h-[60%] sm:h-[65%]">
           {/* Left Side: Profile Info */}
-          <div className="flex-1 flex gap-2 sm:gap-4 items-center min-w-0">
+          <div className="flex-1 flex gap-3 sm:gap-5 items-center min-w-0">
              <div className="relative shrink-0">
                 <div className="absolute -inset-1 bg-gradient-to-br from-amber-400/30 to-amber-600/30 rounded-xl sm:rounded-2xl blur-[1px] sm:blur-[2px]"></div>
                 <img 
                   src={currentUser?.avatar} 
                   crossOrigin="anonymous"
-                  className="relative w-12 h-12 sm:w-20 sm:h-20 rounded-xl sm:rounded-2xl object-cover bg-denim-800 border border-white/20 shadow-2xl" 
+                  className="relative w-16 h-16 sm:w-28 sm:h-28 rounded-xl sm:rounded-2xl object-cover bg-denim-800 border border-white/20 shadow-2xl" 
                 />
              </div>
              
              <div className="flex-1 min-w-0 flex flex-col justify-center">
-                <h2 className="text-xs sm:text-xl font-black truncate tracking-tight text-white leading-tight uppercase">{name || currentUser?.name}</h2>
+                <h2 className={`font-black truncate tracking-tight text-white leading-tight uppercase
+                  ${displayName.length > 18 ? 'text-[10px] sm:text-lg' : 'text-xs sm:text-xl'}
+                `}>
+                  {displayName}
+                </h2>
                 <p className="text-[6px] sm:text-[10px] text-denim-300 font-bold uppercase tracking-wide opacity-80 mb-1.5 sm:mb-3 truncate italic">"{bio || currentUser?.bio || '-'}"</p>
                 
-                <div className="space-y-1 sm:space-y-1.5">
+                <div className="space-y-1 sm:space-y-2">
                    <div className="flex items-center gap-1.5 sm:gap-2 text-[6px] sm:text-[10px] font-black uppercase tracking-widest opacity-95">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-amber-400/20 flex items-center justify-center"><Phone size={8} className="text-amber-400 sm:size-2.5" /></div>
+                      <div className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 rounded bg-amber-400/20 flex items-center justify-center shrink-0"><Phone size={8} className="text-amber-400 sm:size-3" /></div>
                       <span className="truncate">{currentUser?.phoneNumber || '-'}</span>
                    </div>
                    <div className="flex items-center gap-1.5 sm:gap-2 text-[6px] sm:text-[10px] font-black tracking-widest opacity-95">
-                      <div className="w-3 h-3 sm:w-4 sm:h-4 rounded bg-amber-400/20 flex items-center justify-center"><Mail size={8} className="text-amber-400 sm:size-2.5" /></div>
+                      <div className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 rounded bg-amber-400/20 flex items-center justify-center shrink-0"><Mail size={8} className="text-amber-400 sm:size-3" /></div>
                       <span className="lowercase truncate">{(currentUser?.email || '-').toLowerCase()}</span>
                    </div>
                 </div>
              </div>
           </div>
 
-          {/* Right Side: QR CODE - Ukuran SAMA dengan Foto Profil */}
-          <div className="shrink-0 flex flex-col items-center justify-center gap-1 sm:gap-2 ps-2 sm:ps-4 border-l border-white/5">
-             <div className="p-1 sm:p-1.5 bg-gradient-to-br from-amber-300 via-amber-500 to-amber-200 rounded-xl sm:rounded-2xl shadow-[0_0_15px_rgba(245,158,11,0.2)] transition-transform hover:scale-105">
-                <div className="bg-white p-0.5 sm:p-1 rounded-lg sm:rounded-xl">
-                   <img src={qrUrl} crossOrigin="anonymous" className="w-10 h-10 sm:w-18 sm:h-18 object-contain" alt="QR" />
+          {/* Right Side: QR CODE - Enlarged further & Perfectly Centered */}
+          <div className="shrink-0 flex flex-col items-center justify-center gap-1.5 sm:gap-2.5 ps-3 sm:ps-6 border-l border-white/10 h-full">
+             <div className="p-1 sm:p-2 bg-white rounded-xl sm:rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.1)] transition-transform hover:scale-105 active:scale-110">
+                <div className="bg-white p-0.5 rounded-lg overflow-hidden flex items-center justify-center">
+                   <img 
+                    src={qrUrl} 
+                    crossOrigin="anonymous" 
+                    className="w-16 h-16 sm:w-32 sm:h-32 object-contain" 
+                    alt="QR Identity" 
+                  />
                 </div>
              </div>
-             <p className="text-[4px] sm:text-[7px] font-black text-amber-400/70 uppercase tracking-[0.2em] sm:tracking-[0.3em]">Identity QR</p>
+             <p className="text-[5px] sm:text-[9px] font-black text-amber-400/90 uppercase tracking-[0.3em] sm:tracking-[0.5em]">Scan Me</p>
           </div>
         </div>
 
         {/* Bottom Bar: Address */}
-        <div className="absolute bottom-3 sm:bottom-4 left-4 sm:left-8 right-4 sm:right-8 flex items-center justify-between border-t border-white/10 pt-2 sm:pt-3">
-          <div className="flex items-center gap-1.5 sm:gap-2 text-[5px] sm:text-[8px] font-black uppercase tracking-widest text-denim-200 min-w-0">
-             <MapPin size={8} className="text-amber-400 shrink-0 sm:size-2.5" />
+        <div className="absolute bottom-3 sm:bottom-6 left-4 sm:left-8 right-4 sm:right-8 flex items-center justify-between border-t border-white/10 pt-2 sm:pt-4">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-[5px] sm:text-[9px] font-black uppercase tracking-widest text-denim-200 min-w-0">
+             <MapPin size={8} className="text-amber-400 shrink-0 sm:size-3" />
              <span className="truncate">{address || currentUser?.address || 'Address Not Set'}</span>
           </div>
-          <div className="flex items-center gap-1 sm:gap-1.5 text-[5px] sm:text-[7px] text-denim-400 font-black">
-             <QrCode size={8} className="sm:size-2.5" />
-             <span className="tracking-tighter">ID: {currentUser?.id.substring(0,8).toUpperCase()}</span>
+          <div className="flex items-center gap-1 sm:gap-1.5 text-[5px] sm:text-[8px] text-denim-400 font-black">
+             <QrCode size={8} className="sm:size-3" />
+             <span className="tracking-tighter">UID: {currentUser?.id.substring(0,10).toUpperCase()}</span>
           </div>
         </div>
       </div>
@@ -317,7 +327,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onBack, appSettings, o
                     {isDownloading ? <Loader2 size={24} className="animate-spin" /> : <Download size={24} />}
                     SIMPAN KE GALERI
                  </button>
-                 <p className="text-[10px] text-white/40 text-center font-bold uppercase tracking-[0.3em]">Hud-Hud Card Rendering Engine v2.1</p>
+                 <p className="text-[10px] text-white/40 text-center font-bold uppercase tracking-[0.3em]">Hud-Hud Card Rendering Engine v2.2</p>
               </div>
            </div>
         </div>

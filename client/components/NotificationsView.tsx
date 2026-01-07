@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Loader2, Heart, MessageCircle, ArrowLeft } from 'lucide-react';
+import { Bell, Loader2, Heart, MessageCircle, ArrowLeft, Reply } from 'lucide-react';
 import { format } from 'date-fns';
 import { ref, onValue, update } from 'firebase/database';
 import { rtdb } from '../services/firebase';
@@ -39,19 +39,10 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
           ...data,
           createdAt: data.createdAt ? new Date(data.createdAt) : new Date()
         }))
-        // Filter notifikasi 48 jam secara tampilan
         .filter(n => !n.expiresAt || n.expiresAt > now)
         .sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
         
         setNotifications(list);
-        
-        // Auto mark as read after 3s viewing
-        const unreadIds = Object.entries(val).filter(([id, data]: [string, any]) => !data.read).map(([id]) => id);
-        if (unreadIds.length > 0) {
-           const updates: any = {};
-           unreadIds.forEach(id => { updates[`notifications/${currentUser.id}/${id}/read`] = true; });
-           setTimeout(() => update(ref(rtdb), updates), 3000);
-        }
       } else {
         setNotifications([]);
       }
@@ -62,17 +53,31 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
   }, [currentUser]);
 
   const handleNotificationClick = (notif: Notification) => {
-    // Mark as read immediately
     update(ref(rtdb, `notifications/${currentUser?.id}/${notif.id}`), { read: true });
     
     if (setTargetStatusId && onNavigate) {
-      // Set target ID untuk diproses di StatusView (scroll & highlight)
       setTargetStatusId(notif.statusId);
       onNavigate('status'); 
     }
   };
 
   const getTimeAgo = (timestamp: any) => { if (!timestamp) return ''; return format(timestamp, 'HH:mm • dd MMM'); };
+
+  const renderNotificationText = (notif: Notification) => {
+      const isOwner = notif.recipientId === notif.statusOwnerId;
+      const ownerName = notif.statusOwnerName || 'Seseorang';
+
+      if (notif.type === 'like') {
+          return <span><span className="font-bold">{notif.senderName}</span> {isOwner ? 'menyukai postingan Anda.' : `menyukai postingan ${ownerName}.`}</span>;
+      }
+      if (notif.type === 'reply') {
+          return <span><span className="font-bold">{notif.senderName}</span> membalas komentar Anda.</span>;
+      }
+      if (notif.type === 'comment') {
+          return <span><span className="font-bold">{notif.senderName}</span> {isOwner ? 'mengomentari postingan Anda.' : `juga mengomentari postingan ${ownerName}.`}</span>;
+      }
+      return <span><span className="font-bold">{notif.senderName}</span> mengirim notifikasi.</span>;
+  };
   
   return (
     <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200">
@@ -86,14 +91,35 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
         ) : (
           <div className="divide-y divide-cream-200">
             {notifications.map(notif => (
-              <div key={notif.id} onClick={() => handleNotificationClick(notif)} className={`p-4 flex gap-3 cursor-pointer transition-all duration-300 relative border-s-4 ${!notif.read ? 'bg-denim-50 border-denim-500' : 'bg-white border-transparent hover:bg-cream-50'}`}>
+              <div 
+                key={notif.id} 
+                onClick={() => handleNotificationClick(notif)} 
+                className={`p-4 flex gap-3 cursor-pointer transition-all duration-300 relative border-s-4 ${!notif.read ? 'bg-denim-50/80 border-denim-600 ring-inset ring-1 ring-denim-100' : 'bg-white border-transparent hover:bg-cream-50'}`}
+              >
                 <div className="relative shrink-0">
-                  <img src={notif.senderAvatar} className="w-12 h-12 rounded-full object-cover border border-cream-200" onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(notif.senderName)}&background=random&color=fff`; }}/>
-                  <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 border-white flex items-center justify-center ${notif.type === 'like' ? 'bg-red-500' : 'bg-green-500'}`}>{notif.type === 'like' ? <Heart size={10} className="text-white fill-white"/> : <MessageCircle size={10} className="text-white fill-white"/>}</div>
+                  <img src={notif.senderAvatar} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(notif.senderName)}&background=random&color=fff`; }}/>
+                  <div className={`absolute -bottom-1 -right-1 p-1 rounded-full border-2 border-white flex items-center justify-center shadow-sm ${notif.type === 'like' ? 'bg-red-500' : notif.type === 'reply' ? 'bg-blue-500' : 'bg-green-500'}`}>
+                    {notif.type === 'like' ? <Heart size={10} className="text-white fill-white"/> : notif.type === 'reply' ? <Reply size={10} className="text-white" /> : <MessageCircle size={10} className="text-white fill-white"/>}
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-denim-900 leading-snug"><span className="font-bold">{notif.senderName}</span> {notif.type === 'like' ? t.notifications.liked : notif.type === 'reply' ? "membalas komentar Anda:" : t.notifications.commented}{notif.previewText && (<span className="block text-denim-600 italic truncate mt-1 bg-white/50 p-1.5 rounded border border-denim-100 text-xs">"{notif.previewText}"</span>)}</p>
-                  <p className={`text-[10px] mt-1.5 flex items-center gap-1.5 ${!notif.read ? 'text-denim-600 font-bold' : 'text-denim-400'}`}>{getTimeAgo(notif.createdAt)}{!notif.read && <span className="w-1.5 h-1.5 bg-denim-600 rounded-full"></span>}</p>
+                  <p className="text-sm text-denim-900 leading-snug">
+                    {renderNotificationText(notif)}
+                    {notif.previewText && (
+                      <span className="block text-denim-600 italic truncate mt-1 bg-white/40 p-1.5 rounded border border-denim-100/30 text-xs">
+                        "{notif.previewText}"
+                      </span>
+                    )}
+                  </p>
+                  <p className={`text-[10px] mt-1.5 flex items-center gap-1.5 ${!notif.read ? 'text-denim-600 font-black uppercase' : 'text-denim-400 font-medium'}`}>
+                    {getTimeAgo(notif.createdAt)}
+                    {!notif.read && (
+                      <>
+                        <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse shadow-sm"></span>
+                        <span className="tracking-widest">Baru</span>
+                      </>
+                    )}
+                  </p>
                 </div>
               </div>
             ))}

@@ -116,6 +116,8 @@ export interface Notification {
   createdAt: any;
   read: boolean;
   expiresAt: any;
+  statusOwnerId?: string;     // ID pemilik status
+  statusOwnerName?: string;   // Nama pemilik status
 }
 
 export interface ChatPreview {

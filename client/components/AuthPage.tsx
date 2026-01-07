@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ArrowRight, Loader2, Eye, EyeOff, Camera, Upload, Lock } from 'lucide-react';
+import { ArrowRight, Loader2, Eye, EyeOff, Camera, Upload, Lock, WifiOff } from 'lucide-react';
 
 export const AuthPage: React.FC = () => {
   const { loginWithEmail, registerUser } = useAuth();
@@ -51,8 +51,14 @@ export const AuthPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsLoading(true);
 
+    // DETEKSI KONEKSI INTERNET MANUAL
+    if (!navigator.onLine) {
+      setError("Miskin Ya Bro, Kok Gak terhubung ke internet sih?");
+      return;
+    }
+
+    setIsLoading(true);
     try {
       if (isLogin) {
         await loginWithEmail(email, password);
@@ -65,7 +71,15 @@ export const AuthPage: React.FC = () => {
         await registerUser({ email, password, name, phoneNumber, bio, avatarFile });
       }
     } catch (err: any) {
-      setError(err.message || 'Terjadi kesalahan. Periksa data Anda.');
+      // MAPPING ERROR FIREBASE KE PESAN SARKASTIK
+      const errCode = err.code || "";
+      if (errCode.includes('network-request-failed') || errCode.includes('unavailable')) {
+        setError("Miskin Ya Bro, Kok Gak terhubung ke internet sih?");
+      } else if (errCode === 'auth/invalid-credential') {
+        setError("Email atau Sandi salah, coba diingat lagi Bos!");
+      } else {
+        setError(err.message || 'Terjadi kesalahan. Periksa data Anda.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -167,7 +181,12 @@ export const AuthPage: React.FC = () => {
               {/* --- LOGIN SECTION (Compact) --- */}
               <div className="carousel-item p-4">
                 <form onSubmit={handleSubmit} className="space-y-2.5">
-                  {error && <div className="p-2 bg-red-50 border border-red-100 rounded-lg text-red-600 text-[9px] font-bold text-center animate-in shake-x">{error}</div>}
+                  {error && (
+                    <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[10px] font-black text-center animate-in shake-x flex flex-col items-center gap-1">
+                      {error.includes("internet") && <WifiOff size={14} className="mb-1" />}
+                      <span className="uppercase tracking-tight leading-tight">{error}</span>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-[7px] font-black text-denim-400 uppercase tracking-widest mb-1 ml-1">Email</label>
                     <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-cream-50 border border-cream-200 text-denim-900 focus:ring-1 focus:ring-denim-500 outline-none text-xs font-medium shadow-inner placeholder-denim-200" placeholder="email@anda.com" />
@@ -191,7 +210,12 @@ export const AuthPage: React.FC = () => {
               <div className="carousel-item p-4">
                 <div className="overflow-y-auto max-h-[45vh] no-scrollbar pr-0.5">
                   <form onSubmit={handleSubmit} className="space-y-2.5">
-                    {error && <div className="p-2 bg-red-50 border border-red-100 rounded-lg text-red-600 text-[9px] font-bold text-center">{error}</div>}
+                    {error && (
+                      <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[10px] font-black text-center mb-2 flex flex-col items-center gap-1">
+                        {error.includes("internet") && <WifiOff size={14} className="mb-1" />}
+                        <span className="uppercase tracking-tight leading-tight">{error}</span>
+                      </div>
+                    )}
                     
                     <div className="flex justify-center mb-1">
                       <div className="relative w-12 h-12 rounded-xl bg-cream-100 border border-dashed border-denim-300 flex items-center justify-center cursor-pointer hover:bg-cream-200 transition-all overflow-hidden group shadow-inner" onClick={() => fileInputRef.current?.click()}>

@@ -73,7 +73,6 @@ export const StatusView: React.FC<StatusViewProps> = ({
     const t = translations[appSettings?.language || 'id'];
     const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3000); };
 
-    // Scroll to Target Status logic
     useEffect(() => {
         if (!loading && targetStatusId && statuses.length > 0) {
             setTimeout(() => {
@@ -82,7 +81,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
                     element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     element.classList.add('ring-4', 'ring-denim-400', 'ring-opacity-50');
                     setTimeout(() => element.classList.remove('ring-4', 'ring-denim-400', 'ring-opacity-50'), 3000);
-                    if (setTargetStatusId) setTargetStatusId(null); // Reset target
+                    if (setTargetStatusId) setTargetStatusId(null); 
                 }
             }, 500);
         }
@@ -103,7 +102,6 @@ export const StatusView: React.FC<StatusViewProps> = ({
             createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
             likes: data.likes ? Object.keys(data.likes) : []
           }))
-          // Filter out expired (lebih dari 48 jam) di sisi tampilan
           .filter(s => isTrashView || !s.expiresAt || s.expiresAt > now);
 
           const reversed = list.sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
@@ -152,7 +150,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
                 content: statusText, 
                 imageUrl, 
                 createdAt: Date.now(), 
-                expiresAt: Date.now() + (48 * 60 * 60 * 1000), // EXPIRE 48 JAM
+                expiresAt: Date.now() + (48 * 60 * 60 * 1000), 
                 commentsCount: 0 
               });
               showToast("Status dikirim");
@@ -227,6 +225,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
         else {
           await set(likeRef, true);
           if (currentUser.id !== ownerId) {
+             const targetStatus = statuses.find(s => s.id === statusId);
              const nRef = push(ref(rtdb, `notifications/${ownerId}`));
              await set(nRef, { 
                id: nRef.key, 
@@ -238,7 +237,9 @@ export const StatusView: React.FC<StatusViewProps> = ({
                previewText: '', 
                read: false, 
                createdAt: Date.now(), 
-               expiresAt: Date.now() + (48 * 60 * 60 * 1000) // EXPIRE NOTIF 48 JAM
+               expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+               statusOwnerId: ownerId,
+               statusOwnerName: targetStatus?.author.name || 'Seseorang'
              });
           }
         }
@@ -250,25 +251,65 @@ export const StatusView: React.FC<StatusViewProps> = ({
         setSendingComment(true);
         try {
             const commentRef = push(ref(rtdb, `comments/${activeCommentStatusId}`));
-            await set(commentRef, { userId: currentUser.id, userName: currentUser.name, userAvatar: currentUser.avatar, isAdmin: currentUser.id === adminProfile?.id || false, text: commentText, createdAt: Date.now(), replyTo: replyingTo ? { userName: replyingTo.name, text: replyingTo.text } : null });
+            await set(commentRef, { 
+              userId: currentUser.id, 
+              userName: currentUser.name, 
+              userAvatar: currentUser.avatar, 
+              isAdmin: currentUser.id === adminProfile?.id || false, 
+              text: commentText, 
+              createdAt: Date.now(), 
+              replyTo: replyingTo ? { userName: replyingTo.name, text: replyingTo.text } : null 
+            });
+            
             const target = statuses.find(s => s.id === activeCommentStatusId);
             if (target) {
                 await update(ref(rtdb, `statuses/${activeCommentStatusId}`), { commentsCount: (target.commentsCount || 0) + 1 });
-                if (target.userId !== currentUser.id) {
-                    const nRef = push(ref(rtdb, `notifications/${target.userId}`));
-                    await set(nRef, { 
-                      id: nRef.key, 
-                      senderId: currentUser.id, 
-                      senderName: currentUser.name, 
-                      senderAvatar: currentUser.avatar, 
-                      type: 'comment', 
-                      statusId: activeCommentStatusId, 
-                      previewText: commentText, 
-                      read: false, 
-                      createdAt: Date.now(), 
-                      expiresAt: Date.now() + (48 * 60 * 60 * 1000) // EXPIRE NOTIF 48 JAM
+                
+                // --- LOGIKA NOTIFIKASI ALA FACEBOOK ---
+                const participants = new Set<string>(comments.map(c => c.userId));
+                const ownerId = target.userId;
+                const replyTargetId = replyingTo?.userId;
+                
+                // Kumpulkan semua penerima notifikasi unik
+                const notifiedUsers = new Set<string>();
+
+                // 1. Notifikasi ke Pemilik Status (Jika bukan pengirim sendiri)
+                if (ownerId !== currentUser.id) {
+                    const nRef = push(ref(rtdb, `notifications/${ownerId}`));
+                    await set(nRef, {
+                        id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                        type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                        createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                        statusOwnerId: ownerId, statusOwnerName: target.author.name
                     });
+                    notifiedUsers.add(ownerId);
                 }
+
+                // 2. Notifikasi ke Target Balasan (Jika ada dan bukan pemilik status & bukan diri sendiri)
+                if (replyTargetId && replyTargetId !== currentUser.id && !notifiedUsers.has(replyTargetId)) {
+                    const nRef = push(ref(rtdb, `notifications/${replyTargetId}`));
+                    await set(nRef, {
+                        id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                        type: 'reply', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                        createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                        statusOwnerId: ownerId, statusOwnerName: target.author.name
+                    });
+                    notifiedUsers.add(replyTargetId);
+                }
+
+                // 3. Notifikasi ke Peserta Lain (Yang pernah komen tapi bukan owner/target balasan/diri sendiri)
+                participants.forEach(async (participantId) => {
+                    if (participantId !== currentUser.id && !notifiedUsers.has(participantId)) {
+                        const nRef = push(ref(rtdb, `notifications/${participantId}`));
+                        await set(nRef, {
+                            id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                            type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                            createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                            statusOwnerId: ownerId, statusOwnerName: target.author.name
+                        });
+                        notifiedUsers.add(participantId);
+                    }
+                });
             }
             setCommentText(''); setReplyingTo(null);
         } finally { setSendingComment(false); }
@@ -285,12 +326,6 @@ export const StatusView: React.FC<StatusViewProps> = ({
         if (uid === currentUser?.id) { onNavigate && onNavigate('my_status'); return; }
         const snap = await getDoc(doc(db, 'users', uid));
         if (snap.exists()) { setInfoUser({ id: snap.id, ...snap.data() } as User); setShowInfoModal(true); }
-    };
-
-    const handleAddContact = async () => {
-        if (!infoUser || !currentUser || !newContactName) return;
-        await addDoc(collection(db, 'users', currentUser.id, 'contacts'), { uid: infoUser.id, savedName: newContactName, phoneNumber: infoUser.phoneNumber || '', avatar: infoUser.avatar || '' });
-        alert("Kontak disimpan!"); setIsAddingContact(false); setShowInfoModal(false); 
     };
 
     const filteredStatuses = statuses.filter(s => 
@@ -498,7 +533,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
            )}
         </div>
 
-        {/* MODAL KOMENTAR (BISA DIAKSES DARI MANA SAJA) */}
+        {/* MODAL KOMENTAR */}
         {activeCommentStatusId && (
           <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => { setActiveCommentStatusId(null); setReplyingTo(null); }}>
             <div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>
@@ -548,7 +583,6 @@ export const StatusView: React.FC<StatusViewProps> = ({
           </div>
         )}
 
-        {/* MODAL LAINNYA (Moderasi, Link, Create, Delete, dsb) TETAP DI SINI */}
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-denim-900/60 backdrop-blur-sm p-4 animate-in fade-in">
             <div className="animated-status-border w-full max-w-md animate-in zoom-in-95">
@@ -637,7 +671,6 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
         const now = Date.now();
         if (val) {
           const list = Object.entries(val).map(([id, data]: [string, any]) => ({ id, ...data, createdAt: data.createdAt ? new Date(data.createdAt) : new Date(), likes: data.likes ? Object.keys(data.likes) : [] }))
-          // Filter 48 jam tampilan
           .filter(s => !s.expiresAt || s.expiresAt > now)
           .sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
           setMyStatuses(list);
@@ -671,9 +704,59 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
       setSendingComment(true);
       try {
           const commentRef = push(ref(rtdb, `comments/${activeCommentStatusId}`));
-          await set(commentRef, { userId: currentUser.id, userName: currentUser.name, userAvatar: currentUser.avatar, text: commentText, createdAt: Date.now(), replyTo: replyingTo ? { userName: replyingTo.name, text: replyingTo.text } : null });
+          await set(commentRef, { 
+            userId: currentUser.id, 
+            userName: currentUser.name, 
+            userAvatar: currentUser.avatar, 
+            text: commentText, 
+            createdAt: Date.now(), 
+            replyTo: replyingTo ? { userName: replyingTo.name, text: replyingTo.text } : null 
+          });
+          
           const target = myStatuses.find(s => s.id === activeCommentStatusId);
-          if (target) await update(ref(rtdb, `statuses/${activeCommentStatusId}`), { commentsCount: (target.commentsCount || 0) + 1 });
+          if (target) {
+              await update(ref(rtdb, `statuses/${activeCommentStatusId}`), { commentsCount: (target.commentsCount || 0) + 1 });
+              
+              const participants = new Set<string>(comments.map(c => c.userId));
+              const ownerId = target.userId;
+              const replyTargetId = replyingTo?.userId;
+              const notifiedUsers = new Set<string>();
+
+              if (ownerId !== currentUser.id) {
+                const nRef = push(ref(rtdb, `notifications/${ownerId}`));
+                await set(nRef, {
+                    id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                    type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                    createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                    statusOwnerId: ownerId, statusOwnerName: currentUser.name // Dalam MyStatus, pengirim adalah owner
+                });
+                notifiedUsers.add(ownerId);
+              }
+
+              if (replyTargetId && replyTargetId !== currentUser.id && !notifiedUsers.has(replyTargetId)) {
+                const nRef = push(ref(rtdb, `notifications/${replyTargetId}`));
+                await set(nRef, {
+                    id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                    type: 'reply', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                    createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                    statusOwnerId: ownerId, statusOwnerName: currentUser.name
+                });
+                notifiedUsers.add(replyTargetId);
+              }
+
+              participants.forEach(async (participantId) => {
+                  if (participantId !== currentUser.id && !notifiedUsers.has(participantId)) {
+                      const nRef = push(ref(rtdb, `notifications/${participantId}`));
+                      await set(nRef, {
+                          id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                          type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                          createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                          statusOwnerId: ownerId, statusOwnerName: currentUser.name
+                      });
+                      notifiedUsers.add(participantId);
+                  }
+              });
+          }
           setCommentText(''); setReplyingTo(null);
       } finally { setSendingComment(false); }
   };
@@ -716,7 +799,7 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, appSettings, c
         )}
       </div>
 
-      {/* MODAL KOMENTAR (BISA DIAKSES DARI MANA SAJA) */}
+      {/* MODAL KOMENTAR */}
       {activeCommentStatusId && (
         <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in" onClick={() => { setActiveCommentStatusId(null); setReplyingTo(null); }}>
           <div className="bg-white w-full sm:max-w-md h-[85%] sm:h-[600px] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-10" onClick={e => e.stopPropagation()}>

@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 import { doc, updateDoc, increment, getDoc, writeBatch, arrayUnion, addDoc, collection, onSnapshot as onFirestoreSnapshot, serverTimestamp } from 'firebase/firestore';
 import { ref, push, set, onValue, serverTimestamp as rtdbTimestamp, remove, update } from 'firebase/database';
 import { db, rtdb } from '../services/firebase';
-import { uploadMedia } from '../services/storageService'; // MENGGUNAKAN SERVICE BARU
+import { uploadMedia } from '../services/storageService';
 import { AppSettings } from './Layout';
 import { translations } from '../utils/translations';
 
@@ -80,6 +80,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   
   const imageInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const [downloadingFileId, setDownloadingFileId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -92,6 +93,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     });
     return () => unsubChat();
   }, [initialChat.id]);
+
+  // Handle Auto Resize Textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [inputText]);
 
   const isParticipant = chat.participants.includes(currentUser.id);
   const partnerUid = chat.type === 'direct' ? chat.participants.find(p => p !== currentUser.id) : null;
@@ -110,7 +119,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const displayAvatar = rawAvatar;
 
   const bgStyle: React.CSSProperties = appSettings.wallpaper === 'default' 
-    ? { backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23154c79' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }
+    ? { backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23154c79' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }
     : appSettings.wallpaper.startsWith('http') 
       ? { backgroundImage: `url(${appSettings.wallpaper})`, backgroundSize: 'cover', backgroundPosition: 'center', opacity: 1 }
       : { backgroundColor: appSettings.wallpaper, backgroundImage: 'none' };
@@ -316,7 +325,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const toggleSelectionMode = () => { setIsSelectionMode(!isSelectionMode); setSelectedMessageIds(new Set()); setShowHeaderMenu(false); };
   const handleReply = (msg: Message) => { setReplyingTo(msg); setActiveMessageMenu(null); };
 
-  // INTEGRASI STORAGE FAILOVER UNTUK GAMBAR CHAT
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => { 
     if (e.target.files && e.target.files[0]) { 
       const file = e.target.files[0]; 
@@ -333,7 +341,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } 
   };
 
-  // INTEGRASI STORAGE FAILOVER UNTUK DOKUMEN CHAT
   const handleDocSelect = async (e: React.ChangeEvent<HTMLInputElement>) => { 
     if (e.target.files && e.target.files[0]) { 
       const file = e.target.files[0]; 
@@ -354,7 +361,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSendLocation = () => { if (!navigator.geolocation) return; setIsUploading(true); setUploadProgress(t.common.processing); setShowAttachMenu(false); navigator.geolocation.getCurrentPosition((pos) => { handleSendMessage('location', '', { location: { latitude: pos.coords.latitude, longitude: pos.coords.longitude } }).finally(() => { setIsUploading(false); setUploadProgress(""); }); }, () => { setIsUploading(false); setUploadProgress(""); }, { enableHighAccuracy: true, timeout: 15000 }); };
   const handleSendContact = (contact: Contact) => { handleSendMessage('contact', '', { contact: { uid: contact.uid, name: contact.savedName, phoneNumber: contact.phoneNumber, avatar: contact.avatar } }); setShowContactPicker(false); };
   
-  // INTEGRASI STORAGE FAILOVER UNTUK VOICE NOTE
   const startRecording = async () => { 
     try { 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
@@ -467,7 +473,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const isPartnerInContacts = partnerUid ? !!contactsMap[partnerUid] : true;
 
   return (
-    <div className="flex flex-col h-full bg-cream-50 relative pattern-bg">
+    <div className="flex flex-col h-full bg-cream-50 relative pattern-bg w-full overflow-hidden max-w-full">
       <style>{`
         @keyframes gradient-border {
           0% { background-position: 0% 50%; }
@@ -482,40 +488,50 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
           background-size: 400% 400%;
           animation: gradient-border 6s ease infinite;
         }
+        .chat-textarea {
+          overflow-y: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+        .chat-textarea::-webkit-scrollbar {
+          display: none;
+        }
       `}</style>
 
       <div className="absolute inset-0 opacity-20 pointer-events-none z-0" style={bgStyle}></div>
-      <div className="flex items-center justify-between p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-cream-200 bg-cream-50/95 backdrop-blur-sm z-30 shadow-sm relative text-denim-900 shrink-0">
+      
+      {/* HEADER SECTION - FIXED RESPONSIVE (Removed overflow-hidden) */}
+      <div className="flex items-center justify-between p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-cream-200 bg-cream-50/95 backdrop-blur-sm z-30 shadow-sm relative text-denim-900 shrink-0 w-full overflow-visible">
         {isSelectionMode ? ( <div className="flex items-center gap-4 w-full"><button onClick={toggleSelectionMode} className="p-2 hover:bg-cream-200 rounded-full transition-colors"><X size={20} className="text-denim-600"/></button><span className="text-lg font-bold">{selectedMessageIds.size} {t.chatWindow.select}</span><div className="flex-1"/><button onClick={() => selectedMessageIds.size > 0 && setShowDeleteConfirm(true)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors"><Trash2 size={24} /></button></div> ) : (
           <>
-            <div className="flex items-center gap-3 cursor-pointer overflow-hidden" onClick={handleHeaderClick}>
-              <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="md:hidden p-2 -ms-2 text-denim-500"><ArrowLeft size={20} className="rtl:rotate-180" /></button>
-              <img src={displayAvatar} className="w-10 h-10 rounded-full border border-cream-300 object-cover shrink-0" />
+            <div className="flex items-center gap-2 sm:gap-3 cursor-pointer overflow-hidden flex-1" onClick={handleHeaderClick}>
+              <button onClick={(e) => { e.stopPropagation(); onBack(); }} className="md:hidden p-2 -ms-2 text-denim-500 shrink-0"><ArrowLeft size={20} className="rtl:rotate-180" /></button>
+              <img src={displayAvatar} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border border-cream-300 object-cover shrink-0" />
               <div className="flex flex-col min-w-0">
-                <h2 className="font-bold text-[15px] flex items-center gap-1 truncate">
+                <h2 className="font-bold text-[14px] sm:text-[15px] flex items-center gap-1 truncate">
                   {resolvedName}{isVerifiedChat && <BadgeCheck size={16} className="text-white fill-blue-500 shrink-0" />}
                 </h2>
-                <div className="flex items-center gap-1 text-xs text-denim-500">
+                <div className="flex items-center gap-1 text-[11px] text-denim-500">
                   <p className="truncate">{chat.type === 'group' ? `${chat.participants.length} ${t.groups.members}` : (partnerStatus === 'online' ? t.common.online : t.common.offline)}</p>
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-1 text-denim-400 relative">
+            <div className="flex items-center gap-0 sm:gap-1 text-denim-400 shrink-0 relative overflow-visible">
               {chat.type === 'direct' && !isPartnerInContacts && partnerUid && (
                 <button 
                   onClick={handleHeaderClick}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-denim-600 hover:bg-denim-700 text-white rounded-full text-xs font-bold shadow-md transition-all active:scale-95 me-2"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-denim-600 hover:bg-denim-700 text-white rounded-full text-[10px] sm:text-xs font-bold shadow-md transition-all active:scale-95 me-1 sm:me-2"
                 >
-                  <UserPlus size={14} /> <span>Tambah</span>
+                  <UserPlus size={14} className="hidden sm:block" /> <span>Tambah</span>
                 </button>
               )}
               <button className="hidden sm:block p-2 hover:text-denim-600 transition-colors"><Phone size={20} /></button>
               <button className="hidden sm:block p-2 hover:text-denim-600 transition-colors"><Video size={20} /></button>
-              <button onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 border-s border-cream-300 hover:text-denim-600 transition-colors"><MoreVertical size={20} /></button>
+              <button onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 sm:border-s border-cream-300 hover:text-denim-600 transition-colors"><MoreVertical size={20} /></button>
               {showHeaderMenu && (
-                <div className="absolute end-0 top-10 bg-white shadow-xl border border-cream-200 rounded-xl py-1 w-48 z-50 animate-in fade-in zoom-in-95">
-                  <button onClick={() => { setShowHeaderMenu(false); handleHeaderClick(); }} className="w-full text-start px-4 py-3 hover:bg-cream-50 text-sm text-denim-800 flex items-center gap-2"><Info size={16}/> {chat.type === 'group' ? t.chatWindow.infoGroup : t.chatWindow.infoContact}</button>
-                  <button onClick={toggleSelectionMode} className="w-full text-start px-4 py-3 hover:bg-red-50 text-sm text-red-500 flex items-center gap-2 border-t border-cream-100"><Trash2 size={16}/> {t.chatWindow.deleteMsg}</button>
+                <div className="absolute end-1 top-12 bg-white shadow-2xl border border-cream-200 rounded-2xl py-1.5 w-44 z-[60] animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+                  <button onClick={() => { setShowHeaderMenu(false); handleHeaderClick(); }} className="w-full text-start px-4 py-3 hover:bg-cream-50 text-sm font-bold text-denim-800 flex items-center gap-3 transition-colors"><Info size={18} className="text-denim-400"/> {chat.type === 'group' ? t.chatWindow.infoGroup : t.chatWindow.infoContact}</button>
+                  <button onClick={toggleSelectionMode} className="w-full text-start px-4 py-3 hover:bg-red-50 text-sm font-bold text-red-500 flex items-center gap-3 border-t border-cream-100 transition-colors"><Trash2 size={18}/> {t.chatWindow.deleteMsg}</button>
                 </div>
               )}
             </div>
@@ -523,7 +539,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 z-0 custom-scrollbar relative">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 z-0 custom-scrollbar relative w-full">
         {messages.map((msg) => {
           if (msg.senderId === 'system') return <div key={msg.id}>{renderMessageContent(msg, false)}</div>;
           const isMe = msg.senderId === currentUser.id;
@@ -553,9 +569,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="bg-cream-50/95 backdrop-blur-sm border-t border-cream-200 z-30 relative shrink-0">
+      {/* INPUT AREA - FIXED RESPONSIVE (Removed overflow-hidden from parent & children) */}
+      <div className="bg-cream-50/95 backdrop-blur-sm border-t border-cream-200 z-40 relative shrink-0 w-full overflow-visible">
         {!isParticipant ? ( <div className="p-4 bg-cream-100 flex flex-col items-center justify-center gap-2 animate-in slide-in-from-bottom-2 pb-safe"><div className="p-3 bg-cream-200 rounded-full text-denim-400"><Lock size={24} /></div><p className="text-sm font-bold text-denim-600">Anda tidak lagi menjadi anggota grup ini</p><p className="text-xs text-denim-400">Hubungi admin untuk bergabung kembali.</p></div> ) : (
-            <>{replyingTo && (<div className="px-4 py-2 bg-cream-100 border-s-4 border-denim-500 flex justify-between items-center animate-in slide-in-from-bottom-2"><div className="overflow-hidden"><p className="text-xs font-bold text-denim-600 mb-0.5">{t.chatWindow.reply} {getDisplayName(replyingTo.senderId)}</p><p className="text-xs text-denim-500 truncate">{replyingTo.content || 'Media'}</p></div><button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-cream-200 rounded-full text-denim-500"><X size={16} /></button></div>)}<div className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] relative">{showAttachMenu && (<div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] left-4 bg-white rounded-xl shadow-xl border border-cream-200 p-2 grid grid-cols-2 gap-2 animate-in slide-in-from-bottom-5 zoom-in-95 duration-200 w-64 z-20 rtl:right-4 rtl:left-auto"><button onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center p-3 hover:bg-cream-100 rounded-lg gap-2 text-denim-700"><div className="p-2 bg-blue-100 text-blue-500 rounded-full"><ImageIcon size={20}/></div><span className="text-xs font-medium">{t.chatWindow.attach.photo}</span></button><button onClick={() => docInputRef.current?.click()} className="flex flex-col items-center p-3 hover:bg-cream-100 rounded-lg gap-2 text-denim-700"><div className="p-2 bg-purple-100 text-purple-500 rounded-full"><FileText size={20}/></div><span className="text-xs font-medium">{t.chatWindow.attach.doc}</span></button><button onClick={handleSendLocation} className="flex flex-col items-center p-3 hover:bg-cream-100 rounded-lg gap-2 text-denim-700"><div className="p-2 bg-green-100 text-green-500 rounded-full"><MapPin size={20}/></div><span className="text-xs font-medium">{t.chatWindow.attach.loc}</span></button><button onClick={() => { setShowContactPicker(true); setShowAttachMenu(false); }} className="flex flex-col items-center p-3 hover:bg-cream-100 rounded-lg gap-2 text-denim-700"><div className="p-2 bg-orange-100 text-orange-500 rounded-full"><UserIcon size={20}/></div><span className="text-xs font-medium">{t.chatWindow.attach.contact}</span></button></div>)}<input type="file" ref={imageInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" /><input type="file" ref={docInputRef} onChange={handleDocSelect} accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" className="hidden" /><div className="max-w-4xl mx-auto flex items-end gap-2">{isRecording ? (<div className="flex-1 bg-white border border-red-200 rounded-2xl flex items-center px-4 py-2 min-h-[48px] shadow-sm animate-pulse"><div className="w-3 h-3 bg-red-500 rounded-full animate-ping me-3"></div><span className="flex-1 text-red-500 font-mono font-bold">{(recordingDuration / 60) | 0}:{recordingDuration % 60 < 10 ? '0' : ''}{recordingDuration % 60}</span><button onClick={() => stopRecording(true)} className="p-2 text-denim-400 hover:text-red-500 text-xs font-bold uppercase me-2">{t.common.cancel}</button></div>) : (<><button onClick={() => setShowAttachMenu(!showAttachMenu)} disabled={isUploading} className="p-3 text-denim-400 hover:text-denim-600 transition-colors rounded-full hover:bg-cream-200 disabled:opacity-50">{isUploading ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}</button><div className="flex-1 bg-white border border-cream-300 rounded-2xl flex items-center px-4 py-2 min-h-[48px] shadow-sm"><input type="text" value={uploadProgress ? uploadProgress : inputText} disabled={isUploading || !!uploadProgress} onChange={(e) => { setInputText(e.target.value); if (e.target.value.length % 5 === 0) updateDoc(doc(db, 'chats', chat.id), { [`typing.${currentUser.id}`]: serverTimestamp() }); }} onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage('text', inputText)} placeholder={uploadProgress ? t.chatWindow.recording : t.chatWindow.writeMessage} className="flex-1 bg-transparent text-denim-900 placeholder-denim-300 focus:outline-none disabled:text-denim-400 outline-none"/><button className="text-denim-400 hover:text-orange-400 transition-colors ms-2 focus:outline-none"><Smile size={20} /></button></div></>)}<button onClick={() => { if (isRecording) stopRecording(false); else if (inputText.trim()) handleSendMessage('text', inputText); else startRecording(); }} disabled={isUploading} className={`p-3 rounded-full transition-all duration-200 transform shadow-lg ${isRecording ? 'bg-red-500 text-white hover:bg-red-600 scale-110' : 'bg-denim-600 text-white hover:bg-denim-700 scale-100'}`}>{isRecording ? <Send size={20} className="rtl:rotate-180" /> : inputText.trim() ? <Send size={20} className="rtl:rotate-180" /> : <Mic size={20} />}</button></div></div></>
+            <>{replyingTo && (<div className="px-4 py-2 bg-cream-100 border-s-4 border-denim-500 flex justify-between items-center animate-in slide-in-from-bottom-2"><div className="overflow-hidden"><p className="text-xs font-bold text-denim-600 mb-0.5">{t.chatWindow.reply} {getDisplayName(replyingTo.senderId)}</p><p className="text-xs text-denim-500 truncate">{replyingTo.content || 'Media'}</p></div><button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-cream-200 rounded-full text-denim-500"><X size={16} /></button></div>)}<div className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] relative w-full overflow-visible">{showAttachMenu && (<div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] left-4 bg-white/90 backdrop-blur-xl rounded-[28px] shadow-2xl border border-cream-200 p-2.5 grid grid-cols-2 gap-2 animate-in slide-in-from-bottom-5 zoom-in-95 duration-200 w-64 z-[70] rtl:right-4 rtl:left-auto"><button onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-blue-50 text-blue-500 rounded-full group-hover:scale-110 transition-transform"><ImageIcon size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.photo}</span></button><button onClick={() => docInputRef.current?.click()} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-purple-50 text-purple-500 rounded-full group-hover:scale-110 transition-transform"><FileText size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.doc}</span></button><button onClick={handleSendLocation} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-green-50 text-green-500 rounded-full group-hover:scale-110 transition-transform"><MapPin size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.loc}</span></button><button onClick={() => { setShowContactPicker(true); setShowAttachMenu(false); }} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-orange-50 text-orange-500 rounded-full group-hover:scale-110 transition-transform"><UserIcon size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.contact}</span></button></div>)}<input type="file" ref={imageInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" /><input type="file" ref={docInputRef} onChange={handleDocSelect} accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" className="hidden" /><div className="w-full flex items-end gap-2 max-w-full overflow-visible">{isRecording ? (<div className="flex-1 bg-white border border-red-200 rounded-2xl flex items-center px-4 py-2 min-h-[48px] shadow-sm animate-pulse"><div className="w-3 h-3 bg-red-500 rounded-full animate-ping me-3"></div><span className="flex-1 text-red-500 font-mono font-bold">{(recordingDuration / 60) | 0}:{recordingDuration % 60 < 10 ? '0' : ''}{recordingDuration % 60}</span><button onClick={() => stopRecording(true)} className="p-2 text-denim-400 hover:text-red-500 text-xs font-bold uppercase me-2">{t.common.cancel}</button></div>) : (<><button onClick={() => setShowAttachMenu(!showAttachMenu)} disabled={isUploading} className="p-2 sm:p-3 text-denim-400 hover:text-denim-600 transition-colors rounded-full hover:bg-cream-200 disabled:opacity-50 shrink-0">{isUploading ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}</button><div className="flex-1 bg-white border border-cream-300 rounded-2xl flex items-end px-3 py-2 min-h-[48px] shadow-sm overflow-visible"><textarea ref={textareaRef} value={uploadProgress ? uploadProgress : inputText} disabled={isUploading || !!uploadProgress} onChange={(e) => { setInputText(e.target.value); if (e.target.value.length % 5 === 0) updateDoc(doc(db, 'chats', chat.id), { [`typing.${currentUser.id}`]: serverTimestamp() }); }} rows={1} placeholder={uploadProgress ? t.chatWindow.recording : t.chatWindow.writeMessage} className="flex-1 bg-transparent text-denim-900 placeholder-denim-300 focus:outline-none disabled:text-denim-400 outline-none resize-none max-h-32 py-1.5 text-sm chat-textarea"/><button className="text-denim-400 hover:text-orange-400 transition-colors ms-1 shrink-0 p-1.5 focus:outline-none"><Smile size={20} /></button></div></>)}<button onClick={() => { if (isRecording) stopRecording(false); else if (inputText.trim()) handleSendMessage('text', inputText); else startRecording(); }} disabled={isUploading} className={`p-3.5 rounded-full transition-all duration-200 transform shadow-lg shrink-0 ${isRecording ? 'bg-red-500 text-white hover:bg-red-600 scale-110' : 'bg-denim-600 text-white hover:bg-denim-700 scale-100'}`}>{isRecording ? <Send size={20} className="rtl:rotate-180" /> : inputText.trim() ? <Send size={20} className="rtl:rotate-180" /> : <Mic size={20} />}</button></div></div></>
         )}
       </div>
       
@@ -612,9 +629,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
-      {showDeleteConfirm && (<div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"><h3 className="font-bold text-lg text-denim-900 mb-2 text-center">{t.chatWindow.deleteMsg}</h3><p className="text-sm text-denim-500 text-center mb-6">{t.chatWindow.deleteMsgConfirm.replace('{count}', selectedMessageIds.size.toString())}</p><div className="flex gap-3"><button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="flex-1 py-2 bg-cream-100 text-denim-700 rounded-xl font-medium">{t.common.cancel}</button><button onClick={handleDeleteMessages} disabled={isDeleting} className="flex-1 py-2 bg-red-500 text-white rounded-xl font-medium flex justify-center gap-2 items-center">{isDeleting && <Loader2 size={16} className="animate-spin"/>} {t.common.delete}</button></div></div></div>)}
+      {showDeleteConfirm && (<div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in"><div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"><h3 className="font-bold text-lg text-denim-900 mb-2 text-center">{t.chatWindow.deleteMsg}</h3><p className="text-sm text-denim-500 text-center mb-6">{t.chatWindow.deleteMsgConfirm.replace('{count}', selectedMessageIds.size.toString())}</p><div className="flex gap-3"><button onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting} className="flex-1 py-2 bg-cream-100 text-denim-700 rounded-xl font-medium">{t.common.cancel}</button><button onClick={handleDeleteMessages} disabled={isDeleting} className="flex-1 py-2 bg-red-500 text-white rounded-xl font-medium flex justify-center gap-2 items-center">{isDeleting && <Loader2 size={16} className="animate-spin"/>} {t.common.delete}</button></div></div></div>)}
 
-      {showInfoModal && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      {showInfoModal && (<div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
         <div className="modern-modal-glow shadow-2xl animate-in zoom-in-95">
           <div className="bg-white w-full max-w-sm rounded-[21px] flex flex-col max-h-[80vh] overflow-hidden relative">
             <button onClick={() => setShowInfoModal(false)} className="absolute top-4 right-4 bg-black/20 text-white p-1 rounded-full hover:bg-black/40 z-20 rtl:left-4 rtl:right-auto"><X size={20} /></button>
@@ -703,9 +720,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       </div>)}
 
-      {zoomImage && (<div className="fixed inset-0 z-[100] bg-black flex items-center justify-center p-0 animate-in fade-in duration-200" onClick={() => setZoomImage(null)}><button className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 text-white/80 hover:text-white z-[101] bg-black/40 rounded-full p-2 rtl:left-4 rtl:right-auto"><X size={28} /></button><img src={zoomImage} className="w-full h-full object-contain pointer-events-none select-none" /></div>)}
+      {zoomImage && (<div className="fixed inset-0 z-[200] bg-black flex items-center justify-center p-0 animate-in fade-in duration-200" onClick={() => setZoomImage(null)}><button className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 text-white/80 hover:text-white z-[201] bg-black/40 rounded-full p-2 rtl:left-4 rtl:right-auto"><X size={28} /></button><img src={zoomImage} className="w-full h-full object-contain pointer-events-none select-none" /></div>)}
       {toastMessage && (<div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-denim-800 text-white px-4 py-3 rounded-xl shadow-2xl animate-in slide-in-from-bottom-5 fade-in duration-300 flex items-center gap-2"><CheckCircle2 size={18} className="text-green-400" /><span className="text-sm font-medium">{toastMessage}</span></div>)}
-      {showContactPicker && (<div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[70vh]"><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-denim-900">{t.chatWindow.attach.contact}</h3><button onClick={() => setShowContactPicker(false)}><X size={20} className="text-denim-50"/></button></div><div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white"><div className="space-y-1">{myContacts.map(c => (<div key={c.id} onClick={() => handleSendContact(c)} className="flex items-center gap-3 p-3 hover:bg-cream-100 rounded-xl cursor-pointer"><img src={c.avatar} className="w-10 h-10 rounded-full shrink-0" /><div><p className="font-bold text-sm text-denim-900 flex items-center gap-1">{c.savedName}</p><p className="text-xs text-denim-500">{c.phoneNumber}</p></div></div>))}</div></div></div></div>)}
+      {showContactPicker && (<div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-denim-900/40 backdrop-blur-sm pt-safe pb-safe"><div className="bg-white w-full max-w-sm rounded-2xl shadow-xl flex flex-col max-h-[70vh]"><div className="p-4 border-b border-cream-200 flex justify-between items-center bg-cream-50"><h3 className="font-bold text-denim-900">{t.chatWindow.attach.contact}</h3><button onClick={() => setShowContactPicker(false)}><X size={20} className="text-denim-50"/></button></div><div className="flex-1 overflow-y-auto p-2 custom-scrollbar bg-white"><div className="space-y-1">{myContacts.map(c => (<div key={c.id} onClick={() => handleSendContact(c)} className="flex items-center gap-3 p-3 hover:bg-cream-100 rounded-xl cursor-pointer"><img src={c.avatar} className="w-10 h-10 rounded-full shrink-0" /><div><p className="font-bold text-sm text-denim-900 flex items-center gap-1">{c.savedName}</p><p className="text-xs text-denim-500">{c.phoneNumber}</p></div></div>))}</div></div></div></div>)}
     </div>
   );
 };
