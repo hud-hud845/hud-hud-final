@@ -76,9 +76,22 @@ const AppContent: React.FC = () => {
     };
   }, [currentUser]);
 
-  // Jika masih loading status auth dari Firebase, kita kembalikan null (layar polos) 
-  // agar Splash Screen bawaan PWA tetap terlihat sampai halaman siap.
-  if (loading) return null;
+  // --- TAMPILAN LOADING MINIMALIS ---
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#154c79] flex flex-col items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          {/* Efek Spinner Halus (Opsional, bisa dihapus jika hanya ingin teks) */}
+          <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+          
+          {/* Teks Sedang Memuat dengan Animasi Kedip (Pulse) */}
+          <p className="text-white text-sm font-medium tracking-widest animate-pulse">
+            sedang memuat data....
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
