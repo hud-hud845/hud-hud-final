@@ -2,16 +2,15 @@ import React, { useEffect } from 'react';
 import { Layout } from './components/Layout';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthPage } from './components/AuthPage';
-import { MessageSquare } from 'lucide-react';
 import { App as CapApp } from '@capacitor/app';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { Geolocation } from '@capacitor/geolocation';
-import { Camera } from '@capacitor/camera'; // Tambahkan ini
+import { Camera } from '@capacitor/camera';
 
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from './services/firebase'; 
-import InstallBanner from './components/InstallBanner'; // Impor banner yang kita buat tadi
+import InstallBanner from './components/InstallBanner';
 
 const AppContent: React.FC = () => {
   const { currentUser, loading } = useAuth();
@@ -28,16 +27,11 @@ const AppContent: React.FC = () => {
       });
     };
 
-    // 2. LOGIKA IZIN NATIVE (KAMERA, MIKROFON, LOKASI)
+    // 2. LOGIKA IZIN NATIVE
     const setupPermissions = async () => {
       try {
-        // Minta Izin Kamera
         await Camera.requestPermissions();
-        
-        // Minta Izin Mikrofon
         await VoiceRecorder.requestAudioRecordingPermission();
-        
-        // Minta Izin Lokasi
         const locPerm = await Geolocation.checkPermissions();
         if (locPerm.location === 'prompt' || locPerm.location === 'prompt-with-description') {
           await Geolocation.requestPermissions();
@@ -57,7 +51,6 @@ const AppContent: React.FC = () => {
               fcmToken: token.value,
               lastTokenUpdate: new Date()
             });
-            console.log('Token FCM tersimpan!');
           } catch (error) {
             console.error('Gagal simpan token:', error);
           }
@@ -83,24 +76,14 @@ const AppContent: React.FC = () => {
     };
   }, [currentUser]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-denim-900 flex flex-col items-center justify-center relative overflow-hidden">
-        <div className="relative z-10 flex flex-col items-center">
-          <div className="w-20 h-20 bg-cream-50 rounded-2xl flex items-center justify-center shadow-2xl mb-6 animate-bounce">
-            <img src="/icon.png" alt="Hud-Hud" className="w-12 h-12 object-contain" />
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-widest mb-2 animate-pulse">HUD-HUD</h1>
-          <p className="text-denim-300 text-xs mt-4 font-medium tracking-wide opacity-80">Memuat aplikasi...</p>
-        </div>
-      </div>
-    );
-  }
+  // Jika masih loading status auth dari Firebase, kita kembalikan null (layar polos) 
+  // agar Splash Screen bawaan PWA tetap terlihat sampai halaman siap.
+  if (loading) return null;
 
   return (
     <>
       {currentUser ? <Layout /> : <AuthPage />}
-      <InstallBanner /> {/* Banner otomatis muncul di sini */}
+      <InstallBanner />
     </>
   );
 };
