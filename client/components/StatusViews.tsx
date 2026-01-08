@@ -4,7 +4,7 @@ import {
   Plus, Search, X, Loader2, ImageIcon, Activity, Globe, MoreHorizontal, 
   Edit, Trash2, Heart, MessageCircle as MessageIcon, BadgeCheck, 
   ChevronDown, AlertTriangle, UserPlus, Send, CornerDownRight, MoreVertical,
-  LayoutDashboard, Play, Maximize, ExternalLink, Lock, RotateCcw, Eye, MessageSquare, CheckCircle2
+  LayoutDashboard, Play, Maximize, ExternalLink, Lock, RotateCcw, Eye, MessageSquare, CheckCircle2, RotateCw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ref, push, set, onValue, remove, update, query as rtdbQuery, orderByChild, equalTo, limitToLast, get } from 'firebase/database';
@@ -34,7 +34,8 @@ export const StatusView: React.FC<StatusViewProps> = ({
     const { currentUser } = useAuth();
     const [statuses, setStatuses] = useState<Status[]>([]);
     const [loading, setLoading] = useState(true);
-    const [pageSize, setPageSize] = useState(30);
+    const [limitCount, setLimitCount] = useState(25); // Inisialisasi 25 status sesuai request
+    const [hasMore, setHasMore] = useState(true);
     
     const [searchTerm, setSearchTerm] = useState('');
     const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -89,10 +90,11 @@ export const StatusView: React.FC<StatusViewProps> = ({
         }
     }, [loading, targetStatusId, statuses, setTargetStatusId]);
 
+    // LOGIKA PAGINATION - MEMUAT DATA BERTAHAP
     useEffect(() => {
       setLoading(true);
       const path = isTrashView ? 'deleted_statuses' : 'statuses';
-      const statusesRef = rtdbQuery(ref(rtdb, path), orderByChild('createdAt'), limitToLast(pageSize));
+      const statusesRef = rtdbQuery(ref(rtdb, path), orderByChild('createdAt'), limitToLast(limitCount));
       
       const unsubscribe = onValue(statusesRef, (snapshot) => {
         const val = snapshot.val();
@@ -106,6 +108,14 @@ export const StatusView: React.FC<StatusViewProps> = ({
           }))
           .filter(s => isTrashView || !s.expiresAt || s.expiresAt > now);
 
+          // Cek apakah masih ada data lainnya di database
+          // Jika jumlah yang didapat kurang dari limit yang diminta, berarti sudah habis
+          if (Object.keys(val).length < limitCount) {
+            setHasMore(false);
+          } else {
+            setHasMore(true);
+          }
+
           const reversed = list.sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
           
           if (!isTrashView) {
@@ -117,11 +127,12 @@ export const StatusView: React.FC<StatusViewProps> = ({
           }
         } else {
           setStatuses([]);
+          setHasMore(false);
         }
         setLoading(false);
       });
       return () => unsubscribe();
-    }, [pageSize, contactsMap, isTrashView]);
+    }, [limitCount, contactsMap, isTrashView]);
 
     useEffect(() => {
       if (activeCommentStatusId) {
@@ -467,7 +478,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
              </div>
            )}
            
-           {loading ? ( 
+           {loading && limitCount === 25 ? ( 
                <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400"/></div> 
            ) : filteredStatuses.length === 0 ? (
                <div className="flex flex-col items-center justify-center p-12 text-denim-400 h-[60vh]">
@@ -578,6 +589,20 @@ export const StatusView: React.FC<StatusViewProps> = ({
                            </div>
                        );
                    })}
+
+                   {/* TOMBOL LIHAT STATUS LAINNYA (PAGINATION) */}
+                   {hasMore && !isSearchOpen && (
+                     <div className="flex justify-center my-6 animate-in fade-in zoom-in-95">
+                        <button 
+                          onClick={() => setLimitCount(prev => prev + 25)}
+                          disabled={loading}
+                          className="flex items-center gap-3 px-8 py-3 bg-white/80 backdrop-blur-md border border-cream-300 rounded-full text-xs font-black text-denim-700 shadow-xl hover:bg-denim-700 hover:text-white transition-all active:scale-95 group uppercase tracking-[0.1em] disabled:opacity-50"
+                        >
+                          {loading ? <Loader2 size={16} className="animate-spin" /> : <RotateCw size={16} className="group-hover:rotate-180 transition-transform duration-500" />}
+                          Lihat Status Lainnya
+                        </button>
+                     </div>
+                   )}
                </div>
            )}
         </div>
@@ -754,6 +779,8 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
   const { currentUser } = useAuth();
   const [myStatuses, setMyStatuses] = useState<Status[]>([]);
   const [loading, setLoading] = useState(true);
+  const [limitCount, setLimitCount] = useState(25);
+  const [hasMore, setHasMore] = useState(true);
   
   const [activeMenuStatusId, setActiveMenuStatusId] = useState<string | null>(null);
   const [activeCommentStatusId, setActiveCommentStatusId] = useState<string | null>(null);
@@ -786,7 +813,7 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
   useEffect(() => {
     if (!currentUser) return;
     setLoading(true);
-    const statusesRef = rtdbQuery(ref(rtdb, 'statuses'), orderByChild('userId'), equalTo(currentUser.id));
+    const statusesRef = rtdbQuery(ref(rtdb, 'statuses'), orderByChild('userId'), equalTo(currentUser.id), limitToLast(limitCount));
     const unsubscribe = onValue(statusesRef, (snapshot) => {
         const val = snapshot.val();
         const now = Date.now();
@@ -794,12 +821,22 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
           const list = Object.entries(val).map(([id, data]: [string, any]) => ({ id, ...data, createdAt: data.createdAt ? new Date(data.createdAt) : new Date(), likes: data.likes ? Object.keys(data.likes) : [] }))
           .filter(s => !s.expiresAt || s.expiresAt > now)
           .sort((a, b) => (b.createdAt as any) - (a.createdAt as any));
+          
+          if (Object.keys(val).length < limitCount) {
+            setHasMore(false);
+          } else {
+            setHasMore(true);
+          }
+          
           setMyStatuses(list);
-        } else { setMyStatuses([]); }
+        } else { 
+          setMyStatuses([]); 
+          setHasMore(false);
+        }
         setLoading(false);
     });
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, limitCount]);
 
   useEffect(() => {
     if (activeCommentStatusId) {
@@ -949,7 +986,7 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
     <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
       <ViewHeader title={t.status.myStatus} onBack={onBack} />
       <div className="flex-1 overflow-y-auto custom-scrollbar p-0 px-2 pb-32">
-        {loading ? ( <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400"/></div> ) : myStatuses.length === 0 ? (
+        {loading && limitCount === 25 ? ( <div className="flex justify-center p-8"><Loader2 className="animate-spin text-denim-400"/></div> ) : myStatuses.length === 0 ? (
              <div className="flex flex-col items-center justify-center p-10 text-denim-400 h-64"><Activity size={32} className="text-denim-300 mb-3" /><p className="font-medium text-sm text-center">{t.status.noStatus}</p></div>
         ) : (
              <div className="space-y-3 pb-4 pt-2">
@@ -966,6 +1003,20 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
                         <div className="flex items-center px-2 py-1"><button onClick={() => handleLike(status.id, status.likes)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl transition-all ${status.likes.includes(currentUser!.id) ? 'text-red-500 font-bold' : 'text-denim-600'}`}><Heart size={20} className={status.likes.includes(currentUser!.id) ? 'fill-current' : ''} /><span className="text-sm">{t.status.like}</span></button><button onClick={() => setActiveCommentStatusId(status.id)} className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-denim-600"><MessageIcon size={20} /><span className="text-sm">{t.status.comment}</span></button></div>
                     </div>
                 ))}
+
+                {/* PAGINATION STATUS SAYA */}
+                {hasMore && (
+                   <div className="flex justify-center my-6">
+                      <button 
+                        onClick={() => setLimitCount(prev => prev + 25)}
+                        disabled={loading}
+                        className="flex items-center gap-3 px-8 py-3 bg-white/80 border border-cream-300 rounded-full text-xs font-black text-denim-700 shadow-lg hover:bg-denim-700 hover:text-white transition-all active:scale-95 group uppercase tracking-widest disabled:opacity-50"
+                      >
+                        {loading ? <Loader2 size={16} className="animate-spin" /> : <RotateCw size={16} className="group-hover:rotate-180 transition-transform" />}
+                        Muat Lebih Banyak
+                      </button>
+                   </div>
+                )}
              </div>
         )}
       </div>

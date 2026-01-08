@@ -9,19 +9,17 @@ import { rtdb } from './firebase';
 export const cleanupExpiredStatuses = async () => {
     try {
         const now = Date.now();
-        // Query status yang expiresAt-nya lebih kecil dari waktu sekarang
         const statusesRef = rtdbQuery(ref(rtdb, 'statuses'), orderByChild('expiresAt'), endAt(now));
         const snapshot = await get(statusesRef);
         
         if (snapshot.exists()) {
             const updates: any = {};
             snapshot.forEach((child) => {
-                // Hapus status, data likes, dan komentar terkait di node comments
                 updates[`statuses/${child.key}`] = null;
                 updates[`comments/${child.key}`] = null;
             });
             await update(ref(rtdb), updates);
-            console.log(`[AutoCleanup] Berhasil menghapus status & komentar kadaluwarsa (48 Jam).`);
+            console.log(`[AutoCleanup] Status kadaluwarsa dibersihkan.`);
         }
     } catch (error) {
         console.warn("[AutoCleanup] Gagal membersihkan status:", error);
@@ -30,7 +28,6 @@ export const cleanupExpiredStatuses = async () => {
 
 /**
  * Menghapus Notifikasi yang sudah expired di RTDB untuk user tertentu.
- * Dipanggil saat user login/load aplikasi. Expired jika > 48 jam.
  */
 export const cleanupExpiredNotifications = async (userId: string) => {
     if (!userId) return;
@@ -45,7 +42,6 @@ export const cleanupExpiredNotifications = async (userId: string) => {
                 updates[`notifications/${userId}/${child.key}`] = null;
             });
             await update(ref(rtdb), updates);
-            console.log(`[AutoCleanup] Menghapus notifikasi kadaluwarsa (48 Jam) milik user ${userId}.`);
         }
     } catch (error) {
         console.warn("[AutoCleanup] Gagal membersihkan notifikasi:", error);
@@ -53,8 +49,32 @@ export const cleanupExpiredNotifications = async (userId: string) => {
 };
 
 /**
- * Cleanup expired messages logic (optional)
+ * Menghapus Riwayat Chat secara otomatis jika usia > 48 Jam (2X24 Jam).
+ * Ini memastikan database tetap ramping dan aplikasi ngebut.
  */
 export const cleanupExpiredMessages = async (chatId: string) => {
-    // Implementasi opsional jika ingin menghapus pesan lama (misal > 30 hari)
+    if (!chatId) return;
+    try {
+        const now = Date.now();
+        const threshold = now - (48 * 60 * 60 * 1000); // 48 jam yang lalu
+        
+        const messagesRef = rtdbQuery(
+            ref(rtdb, `messages/${chatId}`), 
+            orderByChild('createdAt'), 
+            endAt(threshold)
+        );
+        
+        const snapshot = await get(messagesRef);
+        
+        if (snapshot.exists()) {
+            const updates: any = {};
+            snapshot.forEach((child) => {
+                updates[`messages/${chatId}/${child.key}`] = null;
+            });
+            await update(ref(rtdb), updates);
+            console.log(`[Database Slimmer] Berhasil menghapus riwayat chat lama di ${chatId}`);
+        }
+    } catch (error) {
+        console.warn("[Database Slimmer] Gagal membersihkan pesan:", error);
+    }
 };

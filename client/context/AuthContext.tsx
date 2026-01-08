@@ -16,8 +16,9 @@ import {
   reauthenticateWithCredential,
   deleteUser
 } from 'firebase/auth';
-import { doc, setDoc, updateDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';
+import { doc, setDoc, updateDoc, collection, query, where, getDocs, onSnapshot, getDoc } from 'firebase/firestore';
+import { ref, onValue, set, remove, push } from 'firebase/database';
+import { auth, db, rtdb } from '../services/firebase';
 import { User } from '../types';
 import { uploadImageToCloudinary } from '../services/cloudinary';
 
@@ -40,12 +41,23 @@ interface AuthContextType {
   updateProfile: (name: string, bio: string, phoneNumber: string, avatar?: string) => Promise<void>;
   updateUserEmail: (newEmail: string, currentPassword: string) => Promise<void>;
   updateUserPassword: (newPassword: string, currentPassword: string) => Promise<void>;
+  getDeviceId: () => string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const ADMIN_STANDARD = 'admin.h2@gmail.com';
 const ADMIN_PRO = 'admin.h2h@gmail.com';
+
+// Fungsi generate Device ID unik untuk browser ini
+const generateDeviceId = () => {
+  let id = localStorage.getItem('hudhud_device_id');
+  if (!id) {
+    id = 'dev_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+    localStorage.setItem('hudhud_device_id', id);
+  }
+  return id;
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -55,16 +67,17 @@ export const useAuth = () => {
   return context;
 };
 
-export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deviceId] = useState(generateDeviceId());
 
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch((error) => {
       console.error("Gagal mengatur persistensi sesi:", error);
     });
 
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         
@@ -74,12 +87,14 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
             const isStandardAdmin = firebaseUser.email === ADMIN_STANDARD;
             const isSuperProAdmin = firebaseUser.email === ADMIN_PRO;
             
-            setCurrentUser({ 
+            const userObj = { 
               id: firebaseUser.uid, 
               ...userData, 
               isAdmin: isStandardAdmin || isSuperProAdmin || userData.isAdmin,
-              isProAdmin: isSuperProAdmin // Field khusus Super Admin Pro
-            } as User & { isProAdmin: boolean });
+              isProAdmin: isSuperProAdmin 
+            } as User & { isProAdmin: boolean };
+
+            setCurrentUser(userObj);
             
             if (userData.status !== 'online') {
               updateDoc(userDocRef, { status: 'online' }).catch(() => {});
@@ -106,23 +121,61 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
     }
   };
 
+  const loginWithEmail = async (email: string, pass: string) => {
+    checkConnection();
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      const userCred = await signInWithEmailAndPassword(auth, email, pass);
+      
+      // LOGIKA VALIDASI DEVICE SETELAH LOGIN BERHASIL
+      const userDoc = await getDoc(doc(db, 'users', userCred.user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        const activeDeviceId = data.currentDeviceId;
+
+        // Jika sudah ada device lain yang terdaftar dan berbeda dengan device saat ini
+        if (activeDeviceId && activeDeviceId !== deviceId) {
+          // Trigger Permohonan Izin di RTDB
+          const permissionRef = ref(rtdb, `login_permissions/${userCred.user.uid}`);
+          await set(permissionRef, {
+            requestedBy: deviceId,
+            status: 'pending',
+            timestamp: Date.now()
+          });
+
+          // Kita lempar error khusus agar UI AuthPage menangkap flow "Waiting Permission"
+          throw { code: 'auth/device-permission-required', message: 'Izin Perangkat Diperlukan' };
+        } else {
+          // Jika device pertama kali atau device yang sama, langsung kunci ke device ini
+          await updateDoc(doc(db, 'users', userCred.user.uid), {
+            currentDeviceId: deviceId
+          });
+        }
+      }
+    } catch (error: any) {
+      throw error;
+    }
+  };
+
   const loginWithGoogle = async () => {
     checkConnection();
     const provider = new GoogleAuthProvider();
     try {
       await setPersistence(auth, browserLocalPersistence);
-      await signInWithPopup(auth, provider);
+      const userCred = await signInWithPopup(auth, provider);
+      
+      const userDoc = await getDoc(doc(db, 'users', userCred.user.uid));
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        if (data.currentDeviceId && data.currentDeviceId !== deviceId) {
+          const permissionRef = ref(rtdb, `login_permissions/${userCred.user.uid}`);
+          await set(permissionRef, { requestedBy: deviceId, status: 'pending', timestamp: Date.now() });
+          throw { code: 'auth/device-permission-required', message: 'Izin Perangkat Diperlukan' };
+        } else {
+          await updateDoc(doc(db, 'users', userCred.user.uid), { currentDeviceId: deviceId });
+        }
+      }
     } catch (error) {
-      throw error;
-    }
-  };
-
-  const loginWithEmail = async (email: string, pass: string) => {
-    checkConnection();
-    try {
-      await setPersistence(auth, browserLocalPersistence);
-      await signInWithEmailAndPassword(auth, email, pass);
-    } catch (error: any) {
       throw error;
     }
   };
@@ -135,17 +188,6 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
     try {
       userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = userCredential.user.uid;
-
-      try {
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('phoneNumber', '==', phoneNumber));
-        const querySnapshot = await getDocs(q);
-        const isDuplicate = !querySnapshot.empty && querySnapshot.docs.some(doc => doc.id !== uid);
-        if (isDuplicate) throw new Error("nomor_hp_duplicate");
-      } catch (dbError: any) {
-        if (dbError.message === "nomor_hp_duplicate") throw dbError;
-        throw dbError;
-      }
 
       let avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=154c79&color=fff&size=256`;
       if (avatarFile) {
@@ -162,14 +204,13 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
         status: 'online',
         lastSeen: new Date().toISOString(),
         isAdmin: email === ADMIN_STANDARD || email === ADMIN_PRO,
-        isProfessional: false
+        isProfessional: false,
+        currentDeviceId: deviceId // Langsung kunci ke device pendaftar
       };
 
       await setDoc(doc(db, 'users', uid), newUser);
     } catch (error: any) {
       if (userCredential && userCredential.user) try { await deleteUser(userCredential.user); } catch (e) {}
-      if (error.message === "nomor_hp_duplicate") throw new Error("Nomor HP telah digunakan.");
-      if (error.code === 'auth/email-already-in-use') throw new Error("Email sudah terdaftar.");
       throw error;
     }
   };
@@ -177,7 +218,11 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
   const logout = async () => {
     try {
       if (currentUser) {
-        await updateDoc(doc(db, 'users', currentUser.id), { status: 'offline', lastSeen: new Date().toISOString() });
+        await updateDoc(doc(db, 'users', currentUser.id), { 
+          status: 'offline', 
+          lastSeen: new Date().toISOString(),
+          currentDeviceId: null // Lepas kunci device saat logout manual
+        });
       }
       await signOut(auth);
     } catch (error) {
@@ -235,7 +280,8 @@ export const AuthProvider: React.FC<{ children: React.Node }> = ({ children }) =
       logout, 
       updateProfile,
       updateUserEmail,
-      updateUserPassword
+      updateUserPassword,
+      getDeviceId: () => deviceId
     }}>
       {children}
     </AuthContext.Provider>

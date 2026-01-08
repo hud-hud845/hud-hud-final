@@ -12,8 +12,8 @@ import { translations } from '../utils/translations';
 import { cleanupExpiredMessages, cleanupExpiredStatuses, cleanupExpiredNotifications } from '../services/cleanup';
 import { sendSystemNotification } from '../utils/notificationHelper';
 import { requestFcmToken, onMessageListener } from '../utils/fcm';
-import { Bell, MessageSquare, Users, Activity, User as UserIcon, Settings, Radio, ShieldCheck } from 'lucide-react';
-import { ref, onValue } from 'firebase/database';
+import { Bell, MessageSquare, Users, Activity, User as UserIcon, Settings, Radio, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { ref, onValue, update, remove } from 'firebase/database';
 import { InstallPrompt } from './InstallPrompt';
 
 export interface AppSettings {
@@ -29,7 +29,7 @@ export interface AppSettings {
 }
 
 export const Layout: React.FC = () => {
-  const { currentUser } = useAuth() as any;
+  const { currentUser, logout, getDeviceId } = useAuth() as any;
   const [selectedChat, setSelectedChat] = useState<ChatPreview | undefined>(undefined);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>('chats');
@@ -37,6 +37,9 @@ export const Layout: React.FC = () => {
   const [targetStatusId, setTargetStatusId] = useState<string | null>(null);
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [totalUnreadMessages, setTotalUnreadMessages] = useState(0);
+
+  // State untuk Popup Izin Login Perangkat Lain
+  const [loginRequest, setLoginRequest] = useState<{ userId: string, requestedBy: string } | null>(null);
 
   const [appSettings, setAppSettings] = useState<AppSettings>(() => {
     const saved = localStorage.getItem('hudhud_settings');
@@ -54,6 +57,53 @@ export const Layout: React.FC = () => {
   });
 
   const [adminProfile, setAdminProfile] = useState<User | null>(null);
+
+  // LISTENER: Cek apakah ada perangkat lain yang mencoba login (Izin dari Perangkat Utama)
+  useEffect(() => {
+    if (currentUser) {
+      const permissionRef = ref(rtdb, `login_permissions/${currentUser.id}`);
+      const unsub = onValue(permissionRef, (snapshot) => {
+        const val = snapshot.val();
+        // Munculkan popup jika status masih pending dan requestedBy bukan device ini
+        if (val && val.status === 'pending' && val.requestedBy !== getDeviceId()) {
+           setLoginRequest({ userId: currentUser.id, requestedBy: val.requestedBy });
+        } else {
+           setLoginRequest(null);
+        }
+      });
+      return () => unsub();
+    }
+  }, [currentUser, getDeviceId]);
+
+  // LISTENER: Force Logout jika device ID di Firestore berubah (Akun diambil alih perangkat lain)
+  useEffect(() => {
+    if (currentUser) {
+      const unsub = onSnapshot(doc(db, 'users', currentUser.id), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.currentDeviceId && data.currentDeviceId !== getDeviceId()) {
+            alert("Sesi Anda berakhir karena akun ini telah login di perangkat lain.");
+            logout();
+          }
+        }
+      });
+      return () => unsub();
+    }
+  }, [currentUser, getDeviceId, logout]);
+
+  const handleApproveLogin = async () => {
+    if (loginRequest) {
+      await update(ref(rtdb, `login_permissions/${loginRequest.userId}`), { status: 'approved' });
+      setLoginRequest(null);
+    }
+  };
+
+  const handleRejectLogin = async () => {
+    if (loginRequest) {
+      await update(ref(rtdb, `login_permissions/${loginRequest.userId}`), { status: 'rejected' });
+      setLoginRequest(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -258,6 +308,35 @@ export const Layout: React.FC = () => {
     <div className="flex h-screen w-full bg-cream-50 overflow-hidden font-sans relative text-denim-900 justify-start" dir={isRtl ? 'rtl' : 'ltr'}>
       <InstallPrompt />
 
+      {/* POPUP PERIZINAN LOGIN PERANGKAT LAIN */}
+      {loginRequest && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-md animate-in fade-in duration-300">
+           <div className="bg-white rounded-[40px] p-8 max-w-sm w-full shadow-2xl border border-cream-200 text-center animate-in zoom-in-95 duration-200">
+              <div className="w-20 h-20 bg-amber-50 text-amber-600 rounded-[28px] flex items-center justify-center mx-auto mb-6 shadow-inner">
+                 <ShieldAlert size={40} />
+              </div>
+              <h3 className="text-xl font-black text-denim-900 mb-2 tracking-tight leading-tight">Izin Login Perangkat Baru</h3>
+              <p className="text-sm text-denim-500 mb-8 leading-relaxed font-medium">
+                Bro, Apakah Anda Ingin mengijinkan Akun Anda Dipake oleh Device lain,,?
+              </p>
+              <div className="flex flex-col gap-3">
+                 <button 
+                  onClick={handleApproveLogin}
+                  className="w-full py-4 bg-denim-700 hover:bg-denim-800 text-white font-black rounded-2xl shadow-xl shadow-denim-900/20 transition-all active:scale-95 uppercase tracking-widest text-xs"
+                 >
+                   Ijinkan
+                 </button>
+                 <button 
+                  onClick={handleRejectLogin}
+                  className="w-full py-3.5 text-red-500 font-bold rounded-2xl hover:bg-red-50 transition-colors uppercase tracking-widest text-xs"
+                 >
+                   Tidak
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       {showPermissionBanner && (
         <div className="absolute top-0 left-0 right-0 bg-denim-600 text-white z-[60] px-4 py-3 flex items-center justify-between shadow-md animate-in slide-in-from-top-full duration-300 pt-safe">
            <div className="flex items-center gap-3">
@@ -284,7 +363,6 @@ export const Layout: React.FC = () => {
 
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-cream-200 flex justify-between items-end px-2 py-2 z-50 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] h-16 pb-safe">
            {currentUser.isProAdmin ? (
-              // FOOTER KHUSUS SUPER ADMIN PRO
               <>
                 <button onClick={() => setCurrentView('admin_professional_dashboard')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'admin_professional_dashboard' ? 'text-denim-700' : 'text-denim-400'}`}>
                   <ShieldCheck size={22} className={currentView === 'admin_professional_dashboard' ? 'fill-denim-100/30' : ''} />
@@ -300,7 +378,6 @@ export const Layout: React.FC = () => {
                 </button>
               </>
            ) : (
-             // FOOTER STANDARD
              <>
                <button onClick={() => setCurrentView('chats')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'chats' ? 'text-denim-700' : 'text-denim-400'}`}>
                  <MessageSquare size={22} className={currentView === 'chats' ? 'fill-denim-100/30' : ''} />

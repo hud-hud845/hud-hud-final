@@ -3,16 +3,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   MoreVertical, Phone, Video, Paperclip, Smile, Send, Mic, ArrowLeft, 
   Loader2, Image as ImageIcon, MapPin, FileText, User as UserIcon, 
-  X, Trash2, Download, ExternalLink, Info, CheckSquare, Reply, ChevronDown, BadgeCheck, UserPlus, CheckCircle2, Lock, Play, Maximize
+  X, Trash2, Download, ExternalLink, Info, CheckSquare, Reply, ChevronDown, BadgeCheck, UserPlus, CheckCircle2, Lock, Play, Maximize, RotateCw
 } from 'lucide-react';
 import { ChatPreview, Message, User, Contact } from '../types';
 import { format } from 'date-fns';
 import { doc, updateDoc, increment, getDoc, writeBatch, arrayUnion, addDoc, collection, onSnapshot as onFirestoreSnapshot, serverTimestamp } from 'firebase/firestore';
-import { ref, push, set, onValue, serverTimestamp as rtdbTimestamp, remove, update } from 'firebase/database';
+import { ref, push, set, onValue, serverTimestamp as rtdbTimestamp, remove, update, query as rtdbQuery, limitToLast, orderByChild } from 'firebase/database';
 import { db, rtdb } from '../services/firebase';
 import { uploadMedia } from '../services/storageService';
 import { AppSettings } from './Layout';
 import { translations } from '../utils/translations';
+import { cleanupExpiredMessages } from '../services/cleanup';
 
 interface ChatWindowProps {
   chat: ChatPreview;
@@ -37,6 +38,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 }) => {
   const [chat, setChat] = useState<ChatPreview>(initialChat);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [messageLimit, setMessageLimit] = useState(20); // Batasan awal 20 pesan
+  const [hasMore, setHasMore] = useState(true);
+  
   const [inputText, setInputText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>(''); 
@@ -94,7 +98,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => unsubChat();
   }, [initialChat.id]);
 
-  // Handle Auto Resize Textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -147,18 +150,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
     } 
   }, [chat.id, partnerUid, chat.type]);
 
+  // LOGIKA PAGINATION & AUTO CLEANUP 48 JAM
   useEffect(() => {
-    const messagesRef = ref(rtdb, `messages/${chat.id}`);
+    // Bersihkan database saat room dibuka
+    cleanupExpiredMessages(chat.id);
+
+    const threshold = Date.now() - (48 * 60 * 60 * 1000);
+    const messagesRef = rtdbQuery(
+      ref(rtdb, `messages/${chat.id}`),
+      orderByChild('createdAt'),
+      limitToLast(messageLimit)
+    );
+
     const unsubscribe = onValue(messagesRef, (snapshot) => {
         const val = snapshot.val();
         if (val) {
-            const fetchedMessages: Message[] = Object.entries(val).map(([id, data]: [string, any]) => ({
+            const allFetched: Message[] = Object.entries(val).map(([id, data]: [string, any]) => ({
                 id,
                 ...data,
                 timestamp: data.createdAt ? new Date(data.createdAt) : new Date()
             }));
-            setMessages(fetchedMessages);
-            setTimeout(scrollToBottom, 100);
+            
+            // Filter pesan yang usianya < 48 jam saja untuk UI (safety)
+            const filtered = allFetched.filter(m => (m.timestamp?.getTime() || 0) > threshold);
+            setMessages(filtered);
+            
+            // Cek apakah masih ada pesan lainnya
+            if (filtered.length < messageLimit) setHasMore(false);
+            else setHasMore(true);
+
+            if (messageLimit === 20) setTimeout(scrollToBottom, 300);
 
             const unreadIds = Object.entries(val)
                 .filter(([id, data]: [string, any]) => data.senderId !== currentUser.id && (!data.readBy || !data.readBy.includes(currentUser.id)))
@@ -176,10 +197,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
             }
         } else {
             setMessages([]);
+            setHasMore(false);
         }
     });
     return () => unsubscribe();
-  }, [chat.id, currentUser.id]);
+  }, [chat.id, currentUser.id, messageLimit]);
 
   useEffect(() => {
     if (showContactPicker) {
@@ -227,16 +249,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const showToast = (message: string) => { setToastMessage(message); setTimeout(() => setToastMessage(null), 3000); };
 
+  // PERBAIKAN LOGIKA DOWNLOAD DOKUMEN (FORCE LOCAL STORAGE)
   const handleDirectDownload = async (url: string, fileName: string, msgId: string) => {
     try {
       setDownloadingFileId(msgId);
-      const response = await fetch(url, { mode: 'cors' });
+      // Gunakan fetch untuk mendapatkan blob agar bisa memaksa download
+      const response = await fetch(url);
       if (!response.ok) throw new Error("Gagal mengambil file.");
+      
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a'); link.href = blobUrl; link.download = fileName; document.body.appendChild(link); link.click(); document.body.removeChild(link); window.URL.revokeObjectURL(blobUrl);
-      showToast("File berhasil disimpan");
-    } catch (error) { window.open(url, '_blank'); showToast("Membuka file di tab baru"); } finally { setDownloadingFileId(null); }
+      
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.setAttribute('download', fileName); // Force download dengan atribut HTML5
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      // Bersihkan resources
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 100);
+      
+      showToast("File berhasil disimpan di penyimpanan lokal.");
+    } catch (error) { 
+      // Fallback jika CORS bermasalah
+      window.location.href = url;
+      showToast("Mencoba mengunduh file..."); 
+    } finally { 
+      setDownloadingFileId(null); 
+    }
   };
 
   const handleHeaderClick = async () => { 
@@ -500,7 +545,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
       <div className="absolute inset-0 opacity-20 pointer-events-none z-0" style={bgStyle}></div>
       
-      {/* HEADER SECTION - FIXED RESPONSIVE (Removed overflow-hidden) */}
       <div className="flex items-center justify-between p-3 pt-[calc(0.75rem+env(safe-area-inset-top))] border-b border-cream-200 bg-cream-50/95 backdrop-blur-sm z-30 shadow-sm relative text-denim-900 shrink-0 w-full overflow-visible">
         {isSelectionMode ? ( <div className="flex items-center gap-4 w-full"><button onClick={toggleSelectionMode} className="p-2 hover:bg-cream-200 rounded-full transition-colors"><X size={20} className="text-denim-600"/></button><span className="text-lg font-bold">{selectedMessageIds.size} {t.chatWindow.select}</span><div className="flex-1"/><button onClick={() => selectedMessageIds.size > 0 && setShowDeleteConfirm(true)} className="p-2 hover:bg-red-50 text-red-500 rounded-full transition-colors"><Trash2 size={24} /></button></div> ) : (
           <>
@@ -529,7 +573,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <button className="hidden sm:block p-2 hover:text-denim-600 transition-colors"><Video size={20} /></button>
               <button onClick={() => setShowHeaderMenu(!showHeaderMenu)} className="p-2 sm:border-s border-cream-300 hover:text-denim-600 transition-colors"><MoreVertical size={20} /></button>
               {showHeaderMenu && (
-                <div className="absolute end-1 top-12 bg-white shadow-2xl border border-cream-200 rounded-2xl py-1.5 w-44 z-[60] animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+                <div className="absolute end-1 top-12 bg-white shadow-xl border border-cream-200 rounded-2xl py-1.5 w-44 z-[60] animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
                   <button onClick={() => { setShowHeaderMenu(false); handleHeaderClick(); }} className="w-full text-start px-4 py-3 hover:bg-cream-50 text-sm font-bold text-denim-800 flex items-center gap-3 transition-colors"><Info size={18} className="text-denim-400"/> {chat.type === 'group' ? t.chatWindow.infoGroup : t.chatWindow.infoContact}</button>
                   <button onClick={toggleSelectionMode} className="w-full text-start px-4 py-3 hover:bg-red-50 text-sm font-bold text-red-500 flex items-center gap-3 border-t border-cream-100 transition-colors"><Trash2 size={18}/> {t.chatWindow.deleteMsg}</button>
                 </div>
@@ -539,7 +583,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 z-0 custom-scrollbar relative w-full">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 z-0 custom-scrollbar relative w-full flex flex-col">
+        {/* TOMBOL MUAT PESAN SEBELUMNYA (PAGINATION) */}
+        {hasMore && messages.length >= 20 && (
+          <div className="flex justify-center my-4 animate-in fade-in zoom-in-95">
+            <button 
+              onClick={() => setMessageLimit(prev => prev + 20)}
+              className="flex items-center gap-2 px-6 py-2.5 bg-white/80 backdrop-blur-md border border-cream-300 rounded-full text-xs font-black text-denim-700 shadow-lg hover:bg-denim-700 hover:text-white transition-all active:scale-95 group uppercase tracking-widest"
+            >
+              <RotateCw size={14} className="group-hover:rotate-180 transition-transform duration-500" />
+              Lihat Pesan Sebelumnya
+            </button>
+          </div>
+        )}
+
         {messages.map((msg) => {
           if (msg.senderId === 'system') return <div key={msg.id}>{renderMessageContent(msg, false)}</div>;
           const isMe = msg.senderId === currentUser.id;
@@ -569,7 +626,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT AREA - FIXED RESPONSIVE (Removed overflow-hidden from parent & children) */}
       <div className="bg-cream-50/95 backdrop-blur-sm border-t border-cream-200 z-40 relative shrink-0 w-full overflow-visible">
         {!isParticipant ? ( <div className="p-4 bg-cream-100 flex flex-col items-center justify-center gap-2 animate-in slide-in-from-bottom-2 pb-safe"><div className="p-3 bg-cream-200 rounded-full text-denim-400"><Lock size={24} /></div><p className="text-sm font-bold text-denim-600">Anda tidak lagi menjadi anggota grup ini</p><p className="text-xs text-denim-400">Hubungi admin untuk bergabung kembali.</p></div> ) : (
             <>{replyingTo && (<div className="px-4 py-2 bg-cream-100 border-s-4 border-denim-500 flex justify-between items-center animate-in slide-in-from-bottom-2"><div className="overflow-hidden"><p className="text-xs font-bold text-denim-600 mb-0.5">{t.chatWindow.reply} {getDisplayName(replyingTo.senderId)}</p><p className="text-xs text-denim-500 truncate">{replyingTo.content || 'Media'}</p></div><button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-cream-200 rounded-full text-denim-500"><X size={16} /></button></div>)}<div className="p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] relative w-full overflow-visible">{showAttachMenu && (<div className="absolute bottom-[calc(80px+env(safe-area-inset-bottom))] left-4 bg-white/90 backdrop-blur-xl rounded-[28px] shadow-2xl border border-cream-200 p-2.5 grid grid-cols-2 gap-2 animate-in slide-in-from-bottom-5 zoom-in-95 duration-200 w-64 z-[70] rtl:right-4 rtl:left-auto"><button onClick={() => imageInputRef.current?.click()} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-blue-50 text-blue-500 rounded-full group-hover:scale-110 transition-transform"><ImageIcon size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.photo}</span></button><button onClick={() => docInputRef.current?.click()} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-purple-50 text-purple-500 rounded-full group-hover:scale-110 transition-transform"><FileText size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.doc}</span></button><button onClick={handleSendLocation} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-green-50 text-green-500 rounded-full group-hover:scale-110 transition-transform"><MapPin size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.loc}</span></button><button onClick={() => { setShowContactPicker(true); setShowAttachMenu(false); }} className="flex flex-col items-center p-3 hover:bg-white rounded-2xl gap-2 text-denim-700 transition-all active:scale-95 group"><div className="p-2.5 bg-orange-50 text-orange-500 rounded-full group-hover:scale-110 transition-transform"><UserIcon size={22}/></div><span className="text-xs font-black uppercase tracking-tighter">{t.chatWindow.attach.contact}</span></button></div>)}<input type="file" ref={imageInputRef} onChange={handleImageSelect} accept="image/*" className="hidden" /><input type="file" ref={docInputRef} onChange={handleDocSelect} accept=".pdf,.doc,.docx,.xls,.xlsx,.txt" className="hidden" /><div className="w-full flex items-end gap-2 max-w-full overflow-visible">{isRecording ? (<div className="flex-1 bg-white border border-red-200 rounded-2xl flex items-center px-4 py-2 min-h-[48px] shadow-sm animate-pulse"><div className="w-3 h-3 bg-red-500 rounded-full animate-ping me-3"></div><span className="flex-1 text-red-500 font-mono font-bold">{(recordingDuration / 60) | 0}:{recordingDuration % 60 < 10 ? '0' : ''}{recordingDuration % 60}</span><button onClick={() => stopRecording(true)} className="p-2 text-denim-400 hover:text-red-500 text-xs font-bold uppercase me-2">{t.common.cancel}</button></div>) : (<><button onClick={() => setShowAttachMenu(!showAttachMenu)} disabled={isUploading} className="p-2 sm:p-3 text-denim-400 hover:text-denim-600 transition-colors rounded-full hover:bg-cream-200 disabled:opacity-50 shrink-0">{isUploading ? <Loader2 size={20} className="animate-spin" /> : <Paperclip size={20} />}</button><div className="flex-1 bg-white border border-cream-300 rounded-2xl flex items-end px-3 py-2 min-h-[48px] shadow-sm overflow-visible"><textarea ref={textareaRef} value={uploadProgress ? uploadProgress : inputText} disabled={isUploading || !!uploadProgress} onChange={(e) => { setInputText(e.target.value); if (e.target.value.length % 5 === 0) updateDoc(doc(db, 'chats', chat.id), { [`typing.${currentUser.id}`]: serverTimestamp() }); }} rows={1} placeholder={uploadProgress ? t.chatWindow.recording : t.chatWindow.writeMessage} className="flex-1 bg-transparent text-denim-900 placeholder-denim-300 focus:outline-none disabled:text-denim-400 outline-none resize-none max-h-32 py-1.5 text-sm chat-textarea"/><button className="text-denim-400 hover:text-orange-400 transition-colors ms-1 shrink-0 p-1.5 focus:outline-none"><Smile size={20} /></button></div></>)}<button onClick={() => { if (isRecording) stopRecording(false); else if (inputText.trim()) handleSendMessage('text', inputText); else startRecording(); }} disabled={isUploading} className={`p-3.5 rounded-full transition-all duration-200 transform shadow-lg shrink-0 ${isRecording ? 'bg-red-500 text-white hover:bg-red-600 scale-110' : 'bg-denim-600 text-white hover:bg-denim-700 scale-100'}`}>{isRecording ? <Send size={20} className="rtl:rotate-180" /> : inputText.trim() ? <Send size={20} className="rtl:rotate-180" /> : <Mic size={20} />}</button></div></div></>
@@ -598,7 +654,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       )}
 
       {activeVideoUrl && (
-        <div className={`fixed inset-0 z-[110] bg-black/95 flex flex-col items-center justify-center animate-in fade-in duration-300 ${isVideoZoomed ? 'p-0' : 'p-4'}`}>
+        <div className={`fixed inset-0 z-[110] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300 ${isVideoZoomed ? 'p-0' : 'p-4'}`}>
             <div className={`relative bg-black w-full shadow-2xl transition-all duration-500 flex flex-col ${isVideoZoomed ? 'h-full' : 'max-w-4xl aspect-video rounded-3xl overflow-hidden'}`}>
                 <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 z-20 flex gap-2">
                     <button onClick={() => setIsVideoZoomed(!isVideoZoomed)} className="p-2 bg-black/40 text-white rounded-full hover:bg-black/60 transition-colors">
