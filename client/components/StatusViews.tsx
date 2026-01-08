@@ -273,41 +273,77 @@ export const StatusView: React.FC<StatusViewProps> = ({
         setSendingComment(true);
         try {
             const commentRef = push(ref(rtdb, `comments/${activeCommentStatusId}`));
-            await set(commentRef, { 
+            const commentObj = { 
               userId: currentUser.id, 
               userName: currentUser.name, 
               userAvatar: currentUser.avatar, 
-              isAdmin: currentUser.id === adminProfile?.id || false, 
+              isAdmin: currentUser.isAdmin || false, 
               text: commentText, 
               createdAt: Date.now(), 
               replyTo: replyingTo ? { userName: replyingTo.name, text: replyingTo.text } : null 
-            });
+            };
+            await set(commentRef, commentObj);
             
-            const target = statuses.find(s => s.id === activeCommentStatusId) || 
-                          (statuses.length === 0 ? null : null); // Placeholder for search in myStatuses too if needed
-            
-            if (activeCommentStatusId) {
-                // Update count via simple transaction or get/set
-                const countRef = ref(rtdb, `statuses/${activeCommentStatusId}/commentsCount`);
-                const snap = await get(countRef);
-                await set(countRef, (snap.val() || 0) + 1);
+            // 1. Update Comments Count
+            const countRef = ref(rtdb, `statuses/${activeCommentStatusId}/commentsCount`);
+            const countSnap = await get(countRef);
+            await set(countRef, (countSnap.val() || 0) + 1);
 
-                // Notif logic
-                const statusSnap = await get(ref(rtdb, `statuses/${activeCommentStatusId}`));
-                if (statusSnap.exists()) {
-                  const sData = statusSnap.val();
-                  const ownerId = sData.userId;
-                  if (ownerId !== currentUser.id) {
-                      const nRef = push(ref(rtdb, `notifications/${ownerId}`));
-                      await set(nRef, {
-                          id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
-                          type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false,
-                          createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
-                          statusOwnerId: ownerId, statusOwnerName: sData.author.name
-                      });
-                  }
+            // 2. Fetch Status Owner Info
+            const statusSnap = await get(ref(rtdb, `statuses/${activeCommentStatusId}`));
+            if (!statusSnap.exists()) return;
+            const statusData = statusSnap.val();
+            const ownerId = statusData.userId;
+            const isOwnerSender = ownerId === currentUser.id;
+
+            // --- LOGIKA NOTIFIKASI ALA FACEBOOK ---
+            const notifiedUsers = new Set<string>();
+            notifiedUsers.add(currentUser.id); // Jangan notif diri sendiri
+
+            // A. Jika ada Reply (Balas Komentar)
+            if (replyingTo && replyingTo.userId !== currentUser.id) {
+                const nRef = push(ref(rtdb, `notifications/${replyingTo.userId}`));
+                await set(nRef, {
+                    id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                    type: 'reply', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                    createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                    statusOwnerId: ownerId, statusOwnerName: statusData.author.name
+                });
+                notifiedUsers.add(replyingTo.userId);
+            }
+
+            // B. Notifikasi untuk Pemilik Status (Jika pengirim bukan pemilik)
+            if (!isOwnerSender && !notifiedUsers.has(ownerId)) {
+                const nRef = push(ref(rtdb, `notifications/${ownerId}`));
+                await set(nRef, {
+                    id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                    type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                    createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                    statusOwnerId: ownerId, statusOwnerName: statusData.author.name
+                });
+                notifiedUsers.add(ownerId);
+            }
+
+            // C. Notifikasi untuk Seluruh Peserta Komentar (Diskusi)
+            // Ambil semua user yang pernah komen di status ini
+            const allParticipants = new Set<string>();
+            comments.forEach(c => allParticipants.add(c.userId));
+            
+            for (const participantId of Array.from(allParticipants)) {
+                if (!notifiedUsers.has(participantId)) {
+                    const nRef = push(ref(rtdb, `notifications/${participantId}`));
+                    await set(nRef, {
+                        id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                        // Jika pengirim adalah pemilik status, jenis notifnya khusus
+                        type: isOwnerSender ? 'comment_owner' : 'comment_others', 
+                        statusId: activeCommentStatusId, previewText: commentText, read: false,
+                        createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                        statusOwnerId: ownerId, statusOwnerName: statusData.author.name
+                    });
+                    notifiedUsers.add(participantId);
                 }
             }
+
             setCommentText(''); setReplyingTo(null);
         } finally { setSendingComment(false); }
     };
@@ -789,18 +825,71 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
       setSendingComment(true);
       try {
           const commentRef = push(ref(rtdb, `comments/${activeCommentStatusId}`));
-          await set(commentRef, { 
+          const commentObj = { 
             userId: currentUser.id, 
             userName: currentUser.name, 
             userAvatar: currentUser.avatar, 
             text: commentText, 
             createdAt: Date.now(), 
             replyTo: replyingTo ? { userName: replyingTo.name, text: replyingTo.text } : null 
-          });
+          };
+          await set(commentRef, commentObj);
           
           const countRef = ref(rtdb, `statuses/${activeCommentStatusId}/commentsCount`);
-          const snap = await get(countRef);
-          await set(countRef, (snap.val() || 0) + 1);
+          const countSnap = await get(countRef);
+          await set(countRef, (countSnap.val() || 0) + 1);
+
+          // Fetch Status Owner Info
+          const statusSnap = await get(ref(rtdb, `statuses/${activeCommentStatusId}`));
+          if (!statusSnap.exists()) return;
+          const statusData = statusSnap.val();
+          const ownerId = statusData.userId;
+          const isOwnerSender = ownerId === currentUser.id;
+
+          // LOGIKA NOTIFIKASI ALA FACEBOOK
+          const notifiedUsers = new Set<string>();
+          notifiedUsers.add(currentUser.id);
+
+          // A. Balas Komentar
+          if (replyingTo && replyingTo.userId !== currentUser.id) {
+              const nRef = push(ref(rtdb, `notifications/${replyingTo.userId}`));
+              await set(nRef, {
+                  id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                  type: 'reply', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                  createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                  statusOwnerId: ownerId, statusOwnerName: currentUser.name
+              });
+              notifiedUsers.add(replyingTo.userId);
+          }
+
+          // B. Pemilik Status (Jika pengirim bukan pemilik)
+          if (!isOwnerSender && !notifiedUsers.has(ownerId)) {
+              const nRef = push(ref(rtdb, `notifications/${ownerId}`));
+              await set(nRef, {
+                  id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                  type: 'comment', statusId: activeCommentStatusId, previewText: commentText, read: false,
+                  createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                  statusOwnerId: ownerId, statusOwnerName: currentUser.name
+              });
+              notifiedUsers.add(ownerId);
+          }
+
+          // C. Seluruh Peserta Diskusi
+          const allParticipants = new Set<string>();
+          comments.forEach(c => allParticipants.add(c.userId));
+          for (const participantId of Array.from(allParticipants)) {
+              if (!notifiedUsers.has(participantId)) {
+                  const nRef = push(ref(rtdb, `notifications/${participantId}`));
+                  await set(nRef, {
+                      id: nRef.key, senderId: currentUser.id, senderName: currentUser.name, senderAvatar: currentUser.avatar,
+                      type: isOwnerSender ? 'comment_owner' : 'comment_others',
+                      statusId: activeCommentStatusId, previewText: commentText, read: false,
+                      createdAt: Date.now(), expiresAt: Date.now() + (48 * 60 * 60 * 1000),
+                      statusOwnerId: ownerId, statusOwnerName: currentUser.name
+                  });
+                  notifiedUsers.add(participantId);
+              }
+          }
 
           setCommentText(''); setReplyingTo(null);
       } finally { setSendingComment(false); }
@@ -842,6 +931,20 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
     }
   };
 
+  const handleUserClick = async (uid: string) => {
+    if (!currentUser) return;
+    if (uid === currentUser.id) return; 
+    setIsAddingContact(false);
+    setNewContactName('');
+    const docSnap = await getDoc(doc(db, 'users', uid));
+    if (docSnap.exists()) { 
+         const userData = docSnap.data();
+         const contact = contactsMap?.[uid];
+         setInfoUser({ id: docSnap.id, ...userData, name: contact?.savedName || userData.name } as User); 
+         setShowInfoModal(true); 
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-cream-100 animate-in slide-in-from-left-4 duration-200 relative">
       <ViewHeader title={t.status.myStatus} onBack={onBack} />
@@ -859,7 +962,7 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
                                 <img src={status.imageUrl} className="w-full h-auto max-h-[600px] object-contain group-hover:scale-[1.02] transition-transform duration-500" loading="lazy" />
                             </div>
                         )}
-                        <div className="px-4 py-2 flex justify-between text-xs text-denim-500 border-b border-cream-50/50"><div className="flex items-center gap-1">{status.likes.length > 0 && <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center shadow-sm"><Heart size={8} className="text-white fill-current"/></div>}<span>{status.likes.length > 0 ? status.likes.length : ''}</span></div><button onClick={() => setActiveCommentStatusId(status.id)} className="flex items-center gap-1"><MessageIcon size={14} className="text-denim-400" /><span>{status.commentsCount > 0 ? `${status.commentsCount} ${t.status.comment}` : ''}</span></button></div>
+                        <div className="px-4 py-2 flex justify-between text-xs text-denim-500 border-b border-cream-50/50"><div className="flex items-center gap-1">{status.likes.length > 0 && <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center shadow-sm"><Heart size={8} className="text-white fill-current"/></div>}<span>{status.likes.length > 0 ? status.likes.length : ''}</span></div><button onClick={() => setActiveCommentStatusId(status.id)} className="flex items-center gap-1"><MessageIcon size={14} className="text-denim-400" /><span>{status.commentsCount} {t.status.comment}</span></button></div>
                         <div className="flex items-center px-2 py-1"><button onClick={() => handleLike(status.id, status.likes)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl transition-all ${status.likes.includes(currentUser!.id) ? 'text-red-500 font-bold' : 'text-denim-600'}`}><Heart size={20} className={status.likes.includes(currentUser!.id) ? 'fill-current' : ''} /><span className="text-sm">{t.status.like}</span></button><button onClick={() => setActiveCommentStatusId(status.id)} className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl text-denim-600"><MessageIcon size={20} /><span className="text-sm">{t.status.comment}</span></button></div>
                     </div>
                 ))}
@@ -879,10 +982,10 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
                 {comments.length === 0 && <p className="text-center text-denim-300 text-sm mt-10">Belum ada komentar.</p>}
                 {comments.map(c => (
                   <div key={c.id} className="flex gap-3 relative">
-                    <img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200"/>
+                    <img src={c.userAvatar} className="w-8 h-8 rounded-full object-cover shrink-0 border border-cream-200 cursor-pointer" onClick={() => handleUserClick(c.userId)}/>
                     <div className="bg-white p-3 rounded-2xl rounded-tl-none border border-cream-200 shadow-sm max-w-[85%] relative group">
                       <div className="flex justify-between items-start gap-4">
-                        <h5 className="font-bold text-xs text-denim-900 flex items-center gap-1">{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5>
+                        <h5 className="font-bold text-xs text-denim-900 flex items-center gap-1 cursor-pointer hover:underline" onClick={() => handleUserClick(c.userId)}>{c.userName}{c.isAdmin && <BadgeCheck size={12} className="text-white fill-blue-500" />}</h5>
                         <button onClick={() => setActiveCommentMenuId(activeCommentMenuId === c.id ? null : c.id)} className="text-denim-300 hover:text-denim-600 p-1 -mt-1 -mr-1 transition-colors"><MoreVertical size={14} /></button>
                       </div>
                       {c.replyTo && (
@@ -945,7 +1048,7 @@ export const MyStatusView: React.FC<StatusViewProps> = ({ onBack, onStartChat, a
           </div>
       )}
 
-      {/* MODAL INFO PROFIL (Untuk Chat Sekarang dari Status Saya) */}
+      {/* MODAL INFO PROFIL */}
       {showInfoModal && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-denim-900/60 backdrop-blur-sm animate-in fade-in">
              <div className="bg-white w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 relative border border-cream-100">

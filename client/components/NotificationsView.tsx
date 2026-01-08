@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Loader2, Heart, MessageCircle, ArrowLeft, Reply } from 'lucide-react';
+import { Bell, Loader2, Heart, MessageCircle, ArrowLeft, Reply, User as UserIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { ref, onValue, update } from 'firebase/database';
 import { rtdb } from '../services/firebase';
@@ -68,13 +68,19 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
       const ownerName = notif.statusOwnerName || 'Seseorang';
 
       if (notif.type === 'like') {
-          return <span><span className="font-bold">{notif.senderName}</span> {isOwner ? 'menyukai postingan Anda.' : `menyukai postingan ${ownerName}.`}</span>;
+          return <span><span className="font-bold">{notif.senderName}</span> {isOwner ? 'menyukai status Anda.' : `menyukai status ${ownerName}.`}</span>;
       }
       if (notif.type === 'reply') {
           return <span><span className="font-bold">{notif.senderName}</span> membalas komentar Anda.</span>;
       }
       if (notif.type === 'comment') {
-          return <span><span className="font-bold">{notif.senderName}</span> {isOwner ? 'mengomentari postingan Anda.' : `juga mengomentari postingan ${ownerName}.`}</span>;
+          return <span><span className="font-bold">{notif.senderName}</span> mengomentari status Anda.</span>;
+      }
+      if (notif.type === 'comment_owner') {
+          return <span><span className="font-bold">{notif.senderName}</span> mengomentari postingannya.</span>;
+      }
+      if (notif.type === 'comment_others') {
+          return <span><span className="font-bold">{notif.senderName}</span> juga mengomentari status {ownerName}.</span>;
       }
       return <span><span className="font-bold">{notif.senderName}</span> mengirim notifikasi.</span>;
   };

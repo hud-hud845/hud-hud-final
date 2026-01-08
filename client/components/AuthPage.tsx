@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ArrowRight, Loader2, Eye, EyeOff, Camera, Upload, Lock, WifiOff } from 'lucide-react';
+import { ArrowRight, Loader2, Eye, EyeOff, Camera, Upload, Lock, WifiOff, AlertCircle } from 'lucide-react';
 
 export const AuthPage: React.FC = () => {
   const { loginWithEmail, registerUser } = useAuth();
@@ -71,13 +71,25 @@ export const AuthPage: React.FC = () => {
         await registerUser({ email, password, name, phoneNumber, bio, avatarFile });
       }
     } catch (err: any) {
-      // MAPPING ERROR FIREBASE KE PESAN SARKASTIK
+      // LOGIKA PEMETAAN ERROR KUSTOM (Sesuai Request)
       const errCode = err.code || "";
+      
       if (errCode.includes('network-request-failed') || errCode.includes('unavailable')) {
         setError("Miskin Ya Bro, Kok Gak terhubung ke internet sih?");
-      } else if (errCode === 'auth/invalid-credential') {
-        setError("Email atau Sandi salah, coba diingat lagi Bos!");
+      } else if (
+        errCode === 'auth/invalid-credential' || 
+        errCode === 'auth/wrong-password' || 
+        errCode === 'auth/user-not-found' ||
+        errCode === 'auth/invalid-email'
+      ) {
+        // PESAN ERROR SESUAI REQUEST USER
+        setError("waduh bro,Password atau Email Mu salah Nih");
+      } else if (errCode === 'auth/email-already-in-use') {
+        setError("Email ini sudah dipake orang lain, Bos!");
+      } else if (errCode === 'auth/too-many-requests') {
+        setError("Kebanyakan nyoba nih, istirahat dulu bro!");
       } else {
+        // Fallback untuk error lain yang bukan credential
         setError(err.message || 'Terjadi kesalahan. Periksa data Anda.');
       }
     } finally {
@@ -96,8 +108,16 @@ export const AuthPage: React.FC = () => {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+        }
         .animate-float {
           animation: float 4s ease-in-out infinite;
+        }
+        .animate-shake {
+          animation: shake 0.4s ease-in-out;
         }
         .rotating-border-container {
           position: relative;
@@ -182,8 +202,10 @@ export const AuthPage: React.FC = () => {
               <div className="carousel-item p-4">
                 <form onSubmit={handleSubmit} className="space-y-2.5">
                   {error && (
-                    <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[10px] font-black text-center animate-in shake-x flex flex-col items-center gap-1">
-                      {error.includes("internet") && <WifiOff size={14} className="mb-1" />}
+                    <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-[10px] font-black text-center mb-2 flex flex-col items-center gap-1 animate-shake">
+                      <div className="p-1 bg-white rounded-full shadow-sm">
+                        {error.includes("internet") ? <WifiOff size={14} /> : <AlertCircle size={14} />}
+                      </div>
                       <span className="uppercase tracking-tight leading-tight">{error}</span>
                     </div>
                   )}
@@ -211,8 +233,10 @@ export const AuthPage: React.FC = () => {
                 <div className="overflow-y-auto max-h-[45vh] no-scrollbar pr-0.5">
                   <form onSubmit={handleSubmit} className="space-y-2.5">
                     {error && (
-                      <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-red-600 text-[10px] font-black text-center mb-2 flex flex-col items-center gap-1">
-                        {error.includes("internet") && <WifiOff size={14} className="mb-1" />}
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-[10px] font-black text-center mb-2 flex flex-col items-center gap-1 animate-shake">
+                         <div className="p-1 bg-white rounded-full shadow-sm">
+                          {error.includes("internet") ? <WifiOff size={14} /> : <AlertCircle size={14} />}
+                        </div>
                         <span className="uppercase tracking-tight leading-tight">{error}</span>
                       </div>
                     )}
