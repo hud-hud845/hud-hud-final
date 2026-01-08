@@ -64,7 +64,6 @@ export const Layout: React.FC = () => {
       const permissionRef = ref(rtdb, `login_permissions/${currentUser.id}`);
       const unsub = onValue(permissionRef, (snapshot) => {
         const val = snapshot.val();
-        // Munculkan popup jika status masih pending dan requestedBy bukan device ini
         if (val && val.status === 'pending' && val.requestedBy !== getDeviceId()) {
            setLoginRequest({ userId: currentUser.id, requestedBy: val.requestedBy });
         } else {
@@ -75,7 +74,7 @@ export const Layout: React.FC = () => {
     }
   }, [currentUser, getDeviceId]);
 
-  // LISTENER: Force Logout jika device ID di Firestore berubah (Akun diambil alih perangkat lain)
+  // LISTENER: Force Logout jika device ID di Firestore berubah
   useEffect(() => {
     if (currentUser) {
       const unsub = onSnapshot(doc(db, 'users', currentUser.id), (docSnap) => {
@@ -361,20 +360,21 @@ export const Layout: React.FC = () => {
           renderSidebarView(currentView, handleBackToChats, handleStartChat, (c) => { handleSelectChat(c); setCurrentView('chats'); }, appSettings, updateAppSettings, contactsMap, adminProfile, handleMenuNavigation, setTargetStatusId, targetStatusId)
         )}
 
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-cream-200 flex justify-between items-end px-2 py-2 z-50 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] h-16 pb-safe">
+        {/* BOTTOM NAVIGATION - FIXED FOR ANDROID 13+ CAPACITOR */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-cream-200 flex justify-between items-center px-2 z-50 shadow-[0_-8px_20px_rgba(0,0,0,0.1)] h-auto min-h-[76px] pb-[calc(12px+env(safe-area-inset-bottom, 24px))] pt-3 overflow-visible">
            {currentUser.isProAdmin ? (
               <>
                 <button onClick={() => setCurrentView('admin_professional_dashboard')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'admin_professional_dashboard' ? 'text-denim-700' : 'text-denim-400'}`}>
                   <ShieldCheck size={22} className={currentView === 'admin_professional_dashboard' ? 'fill-denim-100/30' : ''} />
-                  <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Pro Admin</span>
+                  <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">Pro Admin</span>
                 </button>
                 <button onClick={() => setCurrentView('contacts')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'contacts' ? 'text-denim-700' : 'text-denim-400'}`}>
                   <Users size={22} />
-                  <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">User DB</span>
+                  <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">User DB</span>
                 </button>
                 <button onClick={() => setCurrentView('settings')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'settings' ? 'text-denim-700' : 'text-denim-400'}`}>
                   <Settings size={22} />
-                  <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Sistem</span>
+                  <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">Sistem</span>
                 </button>
               </>
            ) : (
@@ -382,37 +382,38 @@ export const Layout: React.FC = () => {
                <button onClick={() => setCurrentView('chats')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'chats' ? 'text-denim-700' : 'text-denim-400'}`}>
                  <MessageSquare size={22} className={currentView === 'chats' ? 'fill-denim-100/30' : ''} />
                  {totalUnreadMessages > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{totalUnreadMessages > 99 ? '99+' : totalUnreadMessages}</span>}
-                 <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Obrolan</span>
+                 <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">Obrolan</span>
                </button>
                
                {currentUser.isAdmin ? (
                  <button onClick={() => setCurrentView('broadcast')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'broadcast' ? 'text-denim-700' : 'text-denim-400'}`}>
                    <Radio size={22} className={currentView === 'broadcast' ? 'fill-denim-100/30' : ''} />
-                   <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Siaran</span>
+                   <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">Siaran</span>
                  </button>
                ) : (
                  <button onClick={() => setCurrentView('groups')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'groups' ? 'text-denim-700' : 'text-denim-400'}`}>
                    <Users size={22} className={currentView === 'groups' ? 'fill-denim-100/30' : ''} />
-                   <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Grup</span>
+                   <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">Grup</span>
                  </button>
                )}
                
-               <button onClick={() => setCurrentView('status')} className={`flex flex-col items-center justify-center flex-1 transition-all duration-300`}>
-                 <div className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg border-2 mb-0.5 transition-all ${currentView === 'status' ? 'bg-denim-700 text-white border-denim-100 scale-110 -translate-y-1' : 'bg-denim-600 text-white/90 border-denim-500/50 scale-100'}`}>
-                   <Activity size={24} strokeWidth={2.5} />
+               {/* STATUS BUTTON - FLOATING STYLE */}
+               <button onClick={() => setCurrentView('status')} className="flex flex-col items-center justify-center flex-1 relative -top-4 overflow-visible">
+                 <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-[0_8px_20px_rgba(21,76,121,0.4)] border-4 border-white mb-1 transition-all duration-300 ${currentView === 'status' ? 'bg-denim-700 text-white scale-110' : 'bg-denim-600 text-white/90 scale-100'}`}>
+                   <Activity size={26} strokeWidth={3} />
                  </div>
-                 <span className={`text-[10px] font-bold uppercase tracking-tighter ${currentView === 'status' ? 'text-denim-800' : 'text-denim-400'}`}>Status</span>
+                 <span className={`text-[10px] font-black uppercase tracking-tighter ${currentView === 'status' ? 'text-denim-800' : 'text-denim-400'}`}>Status</span>
                </button>
                
                <button onClick={() => setCurrentView('notifications')} className={`flex flex-col items-center justify-center flex-1 transition-colors relative ${currentView === 'notifications' ? 'text-denim-700' : 'text-denim-400'}`}>
                  <Bell size={22} className={currentView === 'notifications' ? 'fill-denim-100/30' : ''} />
                  {unreadNotifCount > 0 && <span className="absolute top-0 right-1/4 w-4 h-4 bg-red-500 text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-bold">{unreadNotifCount}</span>}
-                 <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Notif</span>
+                 <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">Notif</span>
                </button>
                
                <button onClick={() => setCurrentView('contacts')} className={`flex flex-col items-center justify-center flex-1 transition-colors ${currentView === 'contacts' ? 'text-denim-700' : 'text-denim-400'}`}>
                  <UserIcon size={22} className={currentView === 'contacts' ? 'fill-denim-100/30' : ''} />
-                 <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">Kontak</span>
+                 <span className="text-[10px] font-black mt-1.5 uppercase tracking-tighter">Kontak</span>
                </button>
              </>
            )}

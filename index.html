@@ -86,15 +86,20 @@
         background-color: #f5f2eb;
         font-family: 'Inter', sans-serif;
         overscroll-behavior-y: none;
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
         -webkit-tap-highlight-color: transparent;
         height: 100vh;
-        height: -webkit-fill-available;
+        /* Perbaikan untuk Android 13+ dvh */
+        height: 100dvh;
+        width: 100vw;
+        position: fixed;
+        overflow: hidden;
       }
       
       #root {
         height: 100%;
+        width: 100%;
       }
       
       .pattern-bg {
@@ -111,7 +116,7 @@
 
       .animated-status-border {
         position: relative;
-        padding: 3px; /* Ketebalan border */
+        padding: 3px;
         background: linear-gradient(270deg, #154c79, #36b2fa, #f5f2eb, #0c9aeb);
         background-size: 400% 400%;
         animation: gradient-rotate 5s ease infinite;
@@ -120,7 +125,7 @@
 
       .animated-status-content {
         background: white;
-        border-radius: 21px; /* Harus sedikit lebih kecil dari parent agar rapi */
+        border-radius: 21px;
         overflow: hidden;
       }
 
